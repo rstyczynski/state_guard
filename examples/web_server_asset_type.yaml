@@ -1,0 +1,49 @@
+version: 1
+name: web-server
+state_machine: lifecycle.yaml
+
+# Webhook notifications for state changes
+webhooks:
+  # Notify when server enters RUNNING state
+  - condition: on_enter
+    state: RUNNING
+    url: https://example.com/webhooks/server-running
+    method: POST
+    timeout: 5s
+    headers:
+      X-Event-Type: server-running
+      Authorization: Bearer your-webhook-token-here
+
+  # Notify when server exits RUNNING state
+  - condition: on_exit
+    state: RUNNING
+    url: https://example.com/webhooks/server-stopped
+    method: POST
+    timeout: 5s
+    headers:
+      X-Event-Type: server-stopped
+
+  # Notify on specific CREATED -> STARTING transition
+  - condition: on_transition
+    from: CREATED
+    to: STARTING
+    url: https://example.com/webhooks/server-starting
+    method: POST
+    timeout: 10s
+
+  # Notify when server enters FAILED state
+  - condition: on_enter
+    state: FAILED
+    url: https://example.com/webhooks/server-failed
+    method: POST
+    timeout: 5s
+    headers:
+      X-Event-Type: server-failed
+      X-Alert-Level: critical
+
+  # Notify when entering maintenance mode
+  - condition: on_enter
+    state: MAINTENANCE
+    url: https://example.com/webhooks/maintenance-start
+    method: POST
+    timeout: 5s

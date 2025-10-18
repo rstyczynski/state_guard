@@ -1,0 +1,46 @@
+version: 1
+name: database
+state_machine: lifecycle.yaml
+
+# Webhook notifications for database state changes
+webhooks:
+  # Alert when database becomes available
+  - condition: on_enter
+    state: RUNNING
+    url: https://monitoring.example.com/webhooks/db-available
+    method: POST
+    timeout: 5s
+    headers:
+      X-Service: database
+      X-Event: available
+
+  # Alert before database shutdown
+  - condition: on_transition
+    from: RUNNING
+    to: STOPPING
+    url: https://monitoring.example.com/webhooks/db-shutting-down
+    method: POST
+    timeout: 10s
+    headers:
+      X-Service: database
+      X-Event: shutting-down
+      X-Alert-Level: warning
+
+  # Critical alert on database failure
+  - condition: on_enter
+    state: FAILED
+    url: https://pagerduty.example.com/webhooks/critical-alert
+    method: POST
+    timeout: 5s
+    headers:
+      X-Service: database
+      X-Event: failed
+      X-Alert-Level: critical
+      Authorization: Bearer pd-critical-token
+
+  # Notify when database is terminated
+  - condition: on_enter
+    state: TERMINATED
+    url: https://monitoring.example.com/webhooks/db-terminated
+    method: POST
+    timeout: 5s

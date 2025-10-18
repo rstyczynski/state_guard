@@ -1,0 +1,441 @@
+openapi: 3.0.3
+info:
+  title: FSM API
+  description: |
+    REST API for managing Finite State Machine instances with Asset Types and Webhooks.
+
+    ## Features
+    - Create and manage FSM asset instances
+    - Execute state transitions with validation
+    - Track state transition history
+    - Webhook notifications on state changes
+    - Persistent storage with SQLite
+
+    ## Asset Types
+    Asset Types define the FSM definition and webhook configuration. Each asset instance
+    is created from an Asset Type and maintains its own independent state.
+
+  version: 2.2.0
+  contact:
+    name: FSM API Support
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Development server
+
+tags:
+  - name: assets
+    description: Asset instance management
+  - name: health
+    description: Health and status checks
+
+paths:
+  /health:
+    get:
+      tags:
+        - health
+      summary: Health check
+      description: Check the health status of the API server and storage backend
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /assets:
+    get:
+      tags:
+        - assets
+      summary: List all assets
+      description: Retrieve a list of all FSM asset instances
+      operationId: listAssets
+      responses:
+        '200':
+          description: List of assets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAssetsResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - assets
+      summary: Create new asset
+      description: |
+        Create a new FSM asset instance from an Asset Type.
+        The asset will be initialized to the FSM's initial state.
+      operationId: createAsset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssetRequest'
+            examples:
+              web-server:
+                summary: Web server asset
+                value:
+                  asset_type: "simple_asset_type.yaml"
+                  instance_id: "web-server-1"
+      responses:
+        '201':
+          description: Asset created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /assets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Unique asset instance identifier
+        schema:
+          type: string
+          example: "web-server-1"
+
+    get:
+      tags:
+        - assets
+      summary: Get asset details
+      description: Retrieve details of a specific asset instance
+      operationId: getAsset
+      responses:
+        '200':
+          description: Asset details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetResponse'
+        '404':
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - assets
+      summary: Delete asset
+      description: Remove an asset instance and all its history from storage
+      operationId: deleteAsset
+      responses:
+        '200':
+          description: Asset deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Instance deleted successfully"
+                  id:
+                    type: string
+                    example: "web-server-1"
+        '404':
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /assets/{id}/transition:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Unique asset instance identifier
+        schema:
+          type: string
+          example: "web-server-1"
+
+    post:
+      tags:
+        - assets
+      summary: Execute state transition
+      description: |
+        Transition an asset to a new state. The transition must be valid according
+        to the FSM definition. State changes are persisted atomically and webhooks
+        are triggered asynchronously.
+      operationId: transitionAsset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionRequest'
+            examples:
+              start-server:
+                summary: Start server
+                value:
+                  to_state: "RUNNING"
+              stop-server:
+                summary: Stop server
+                value:
+                  to_state: "STOPPED"
+      responses:
+        '200':
+          description: Transition executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitionResponse'
+        '400':
+          description: Invalid transition or request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid-transition:
+                  summary: Invalid state transition
+                  value:
+                    error: "Bad Request"
+                    message: "Transition failed: invalid transition from CREATED to TERMINATED"
+                    code: 400
+        '404':
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /assets/{id}/history:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Unique asset instance identifier
+        schema:
+          type: string
+          example: "web-server-1"
+      - name: limit
+        in: query
+        required: false
+        description: Maximum number of transitions to return
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 1000
+
+    get:
+      tags:
+        - assets
+      summary: Get state history
+      description: |
+        Retrieve the state transition history for an asset instance.
+        Returns transitions in reverse chronological order (most recent first).
+      operationId: getAssetHistory
+      responses:
+        '200':
+          description: Transition history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+        '404':
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    CreateAssetRequest:
+      type: object
+      required:
+        - asset_type
+        - instance_id
+      properties:
+        asset_type:
+          type: string
+          description: Path to Asset Type YAML file (relative to asset-dir)
+          example: "simple_asset_type.yaml"
+        instance_id:
+          type: string
+          description: Unique identifier for the asset instance
+          pattern: '^[a-zA-Z0-9._-]+$'
+          example: "web-server-1"
+
+    AssetResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique asset identifier
+          example: "web-server-1"
+        asset_type:
+          type: string
+          description: Asset type file path
+          example: "simple_asset_type.yaml"
+        definition_name:
+          type: string
+          description: FSM definition name
+          example: "generic_lifecycle"
+        current_state:
+          type: string
+          description: Current FSM state
+          example: "RUNNING"
+        available_transitions:
+          type: array
+          description: States that can be transitioned to from current state
+          items:
+            type: string
+          example: ["MAINTENANCE", "STOPPING", "FAILED"]
+        is_final_state:
+          type: boolean
+          description: Whether the current state is a final state
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          description: Asset creation timestamp
+          example: "2025-10-17T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last state update timestamp
+          example: "2025-10-17T12:05:30Z"
+
+    ListAssetsResponse:
+      type: object
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetResponse'
+        count:
+          type: integer
+          description: Total number of assets
+          example: 5
+
+    TransitionRequest:
+      type: object
+      required:
+        - to_state
+      properties:
+        to_state:
+          type: string
+          description: Target state to transition to
+          example: "RUNNING"
+
+    TransitionResponse:
+      type: object
+      properties:
+        from_state:
+          type: string
+          description: Previous state
+          example: "STARTING"
+        to_state:
+          type: string
+          description: New state
+          example: "RUNNING"
+        timestamp:
+          type: string
+          format: date-time
+          description: Transition timestamp
+          example: "2025-10-17T12:05:30Z"
+
+    HistoryResponse:
+      type: object
+      properties:
+        instance_id:
+          type: string
+          description: Asset instance identifier
+          example: "web-server-1"
+        transitions:
+          type: array
+          description: State transitions in reverse chronological order
+          items:
+            $ref: '#/components/schemas/TransitionHistory'
+
+    TransitionHistory:
+      type: object
+      properties:
+        from_state:
+          type: string
+          description: Source state
+          example: "STARTING"
+        to_state:
+          type: string
+          description: Target state
+          example: "RUNNING"
+        transitioned_at:
+          type: string
+          format: date-time
+          description: Transition timestamp
+          example: "2025-10-17T12:05:30Z"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Health status
+          enum: [healthy, unhealthy]
+          example: "healthy"
+        version:
+          type: string
+          description: API version
+          example: "2.2.0"
+        timestamp:
+          type: string
+          format: date-time
+          description: Current server time
+          example: "2025-10-17T12:00:00Z"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+          example: "Bad Request"
+        message:
+          type: string
+          description: Detailed error message
+          example: "Invalid transition from CREATED to TERMINATED"
+        code:
+          type: integer
+          description: HTTP status code
+          example: 400

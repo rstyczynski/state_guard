@@ -1,0 +1,14 @@
+version: 1
+name: simple-service
+state_machine: lifecycle.yaml
+
+webhooks:
+  # Notify when server enters RUNNING state
+  - condition: on_enter
+    state: RUNNING
+    url: http://localhost:8081/webhooks/server-running
+    method: POST
+    timeout: 5s
+    headers:
+      X-Event-Type: server-running
+      Authorization: Bearer your-webhook-token-here
