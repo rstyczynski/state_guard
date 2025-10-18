@@ -39,6 +39,12 @@ transitions:
   - from: RUNNING
     to: MAINTENANCE
 
+  - from: STOPPED
+    to: MAINTENANCE
+
+  - from: MAINTENANCE
+    to: STOPPING
+
   - from: MAINTENANCE
     to: RUNNING
 

@@ -18,14 +18,14 @@ type WebhookTask struct {
 
 // Dispatcher manages webhook notifications with a worker pool
 type Dispatcher struct {
-	workers    int
-	taskQueue  chan WebhookTask
-	wg         sync.WaitGroup
-	ctx        context.Context
-	cancel     context.CancelFunc
-	assetType  *fsm.AssetType
-	sinks      map[string]Sink // webhook config index -> sink
-	mu         sync.RWMutex
+	workers   int
+	taskQueue chan WebhookTask
+	wg        sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+	assetType *fsm.AssetType
+	sinks     map[string]Sink // webhook config index -> sink
+	mu        sync.RWMutex
 }
 
 // NewDispatcher creates a new webhook dispatcher with a worker pool
@@ -228,4 +228,42 @@ func (d *Dispatcher) WorkerCount() int {
 // QueueLength returns the current number of tasks in the queue
 func (d *Dispatcher) QueueLength() int {
 	return len(d.taskQueue)
+}
+
+// GetMaxTimeout returns the maximum timeout from all webhook configurations
+func (d *Dispatcher) GetMaxTimeout() time.Duration {
+	if d.assetType == nil || len(d.assetType.Webhooks) == 0 {
+		return 5 * time.Second // Default fallback
+	}
+
+	maxTimeout := time.Duration(0)
+	for _, webhookConfig := range d.assetType.Webhooks {
+		timeout := webhookConfig.GetTimeout()
+		if timeout > maxTimeout {
+			maxTimeout = timeout
+		}
+	}
+
+	// Add some buffer time for processing
+	return maxTimeout + 1*time.Second
+}
+
+// WaitForCompletion waits for all queued tasks to be processed
+// Uses the maximum timeout from webhook configurations plus buffer
+func (d *Dispatcher) WaitForCompletion() error {
+	timeout := d.GetMaxTimeout()
+
+	// Wait for queue to be empty
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if len(d.taskQueue) == 0 {
+			// Queue is empty, give workers a moment to finish current tasks
+			time.Sleep(100 * time.Millisecond)
+			if len(d.taskQueue) == 0 {
+				return nil // All tasks processed
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for webhook completion after %v", timeout)
 }
