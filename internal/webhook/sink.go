@@ -7,12 +7,12 @@ import (
 
 // Event represents a state transition event
 type Event struct {
-	InstanceID string            // Asset instance ID
-	AssetType  string            // Asset type name
-	FromState  string            // Previous state
-	ToState    string            // New state
-	Timestamp  time.Time         // When the transition occurred
-	Metadata   map[string]string // Additional metadata
+	InstanceID string            `json:"instance_id"` // Asset instance ID
+	AssetType  string            `json:"asset_type"`  // Asset type name
+	FromState  string            `json:"from_state"`  // Previous state
+	ToState    string            `json:"to_state"`    // New state
+	Timestamp  time.Time         `json:"timestamp"`   // When the transition occurred
+	Metadata   map[string]string `json:"metadata"`    // Additional metadata
 }
 
 // Sink defines the interface for webhook notification sinks
