@@ -2,13 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"time"
 )
 
-// WebhookEvent represents the payload sent by FSM webhooks
+// WebhookEvent represents the webhook payload
 type WebhookEvent struct {
 	InstanceID string            `json:"instance_id"`
 	AssetType  string            `json:"asset_type"`
@@ -19,54 +20,65 @@ type WebhookEvent struct {
 }
 
 func main() {
-	// Webhook handler
-	http.HandleFunc("/webhooks/", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("📩 Received webhook: %s %s", r.Method, r.URL.Path)
-		log.Printf("   Headers: %v", r.Header)
+	http.HandleFunc("/webhooks/server-running", handleServerRunning)
+	http.HandleFunc("/webhooks/", handleGeneric)
 
-		// Read body
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Printf("   ❌ Error reading body: %v", err)
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		defer r.Body.Close()
+	fmt.Println("🎣 Webhook Receiver Starting")
+	fmt.Println("================================")
+	fmt.Println("Listening on: http://localhost:8081")
+	fmt.Println("")
+	fmt.Println("Endpoints:")
+	fmt.Println("  - /webhooks/server-running")
+	fmt.Println("  - /webhooks/* (catch-all)")
+	fmt.Println("")
 
-		// Parse webhook event
-		var event WebhookEvent
-		if err := json.Unmarshal(body, &event); err != nil {
-			log.Printf("   ❌ Error parsing JSON: %v", err)
-			log.Printf("   Raw body: %s", string(body))
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-
-		// Log the event
-		log.Printf("   ✅ Instance: %s", event.InstanceID)
-		log.Printf("   ✅ Asset Type: %s", event.AssetType)
-		log.Printf("   ✅ Transition: %s → %s", event.FromState, event.ToState)
-		log.Printf("   ✅ Timestamp: %s", event.Timestamp.Format(time.RFC3339))
-
-		// Respond with success
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"received"}`))
-	})
-
-	// Health check
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"healthy"}`))
-	})
-
-	// Start server
-	port := "8081"
-	log.Printf("🎯 Webhook Receiver starting on http://localhost:%s", port)
-	log.Printf("   Listening for webhooks at http://localhost:%s/webhooks/*", port)
-	log.Printf("   Health check: http://localhost:%s/health", port)
-	log.Println()
-
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := http.ListenAndServe(":8081", nil); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func handleServerRunning(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("\n[%s] %s %s\n", time.Now().Format("15:04:05"), r.Method, r.URL.Path)
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		fmt.Printf("❌ Error reading body: %v\n", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var event WebhookEvent
+	if err := json.Unmarshal(body, &event); err != nil {
+		fmt.Printf("❌ Error parsing JSON: %v\n", err)
+		fmt.Printf("Raw body: %s\n", string(body))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("✅ SERVER RUNNING WEBHOOK RECEIVED\n")
+	fmt.Printf("   Instance:    %s\n", event.InstanceID)
+	fmt.Printf("   Asset Type:  %s\n", event.AssetType)
+	fmt.Printf("   Transition:  %s → %s\n", event.FromState, event.ToState)
+	fmt.Printf("   Timestamp:   %s\n", event.Timestamp.Format("15:04:05"))
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"received"}`))
+}
+
+func handleGeneric(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("\n[%s] %s %s\n", time.Now().Format("15:04:05"), r.Method, r.URL.Path)
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var event WebhookEvent
+	if err := json.Unmarshal(body, &event); err == nil {
+		fmt.Printf("   %s → %s (instance: %s)\n", event.FromState, event.ToState, event.InstanceID)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"received"}`))
 }

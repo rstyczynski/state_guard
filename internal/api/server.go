@@ -5,26 +5,32 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
+	"github.com/rstyczynski/fsm_v2/internal/fsm"
 	"github.com/rstyczynski/fsm_v2/internal/storage"
+	"github.com/rstyczynski/fsm_v2/internal/webhook"
 )
 
 // Server represents the API server
 type Server struct {
-	storage    storage.Storage
-	httpServer *http.Server
-	assetDir   string // Directory containing asset type YAML files
+	storage     storage.Storage
+	httpServer  *http.Server
+	assetDir    string // Directory containing asset type YAML files
+	dispatchers map[string]*webhook.Dispatcher // Asset type path → dispatcher
+	dispMu      sync.RWMutex
 }
 
 // NewServer creates a new API server
 func NewServer(store storage.Storage, assetDir string) *Server {
 	return &Server{
-		storage:  store,
-		assetDir: assetDir,
+		storage:     store,
+		assetDir:    assetDir,
+		dispatchers: make(map[string]*webhook.Dispatcher),
 	}
 }
 
@@ -89,8 +95,50 @@ func (s *Server) Start(addr string) error {
 	return s.httpServer.ListenAndServe()
 }
 
+// getOrCreateDispatcher gets or creates a webhook dispatcher for an asset type
+func (s *Server) getOrCreateDispatcher(assetTypePath string, assetType *fsm.AssetType) (*webhook.Dispatcher, error) {
+	// Fast path: read lock
+	s.dispMu.RLock()
+	if disp, exists := s.dispatchers[assetTypePath]; exists {
+		s.dispMu.RUnlock()
+		return disp, nil
+	}
+	s.dispMu.RUnlock()
+
+	// Slow path: write lock
+	s.dispMu.Lock()
+	defer s.dispMu.Unlock()
+
+	// Double-check after acquiring write lock
+	if disp, exists := s.dispatchers[assetTypePath]; exists {
+		return disp, nil
+	}
+
+	// Create new dispatcher
+	disp, err := webhook.NewDispatcher(5, 100, assetType)
+	if err != nil {
+		return nil, err
+	}
+
+	s.dispatchers[assetTypePath] = disp
+	log.Printf("Created webhook dispatcher for asset type: %s", assetTypePath)
+	return disp, nil
+}
+
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Close all webhook dispatchers
+	s.dispMu.Lock()
+	for assetType, disp := range s.dispatchers {
+		log.Printf("Shutting down webhook dispatcher for: %s", assetType)
+		if err := disp.Close(); err != nil {
+			log.Printf("Error closing dispatcher for %s: %v", assetType, err)
+		}
+	}
+	s.dispatchers = make(map[string]*webhook.Dispatcher)
+	s.dispMu.Unlock()
+
+	// Shutdown HTTP server
 	if s.httpServer != nil {
 		return s.httpServer.Shutdown(ctx)
 	}

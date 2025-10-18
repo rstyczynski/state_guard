@@ -179,14 +179,37 @@ func (d *Dispatcher) queueTask(webhookIndex int, event *Event) {
 	// Non-blocking send - if queue is full, log and drop
 	select {
 	case d.taskQueue <- task:
-		// Task queued successfully
+		log.Printf("Webhook queued: %s %s → %s", event.InstanceID, event.FromState, event.ToState)
 	default:
 		log.Printf("Webhook queue full, dropping notification for %s", event.InstanceID)
 	}
 }
 
+// Flush waits for all pending webhooks to be sent (with timeout)
+func (d *Dispatcher) Flush(timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for time.Now().Before(deadline) {
+		if d.QueueLength() == 0 {
+			// Queue is empty, wait a bit more for in-flight requests
+			time.Sleep(50 * time.Millisecond)
+			return
+		}
+		<-ticker.C
+	}
+
+	if d.QueueLength() > 0 {
+		log.Printf("Warning: %d webhooks still pending after flush timeout", d.QueueLength())
+	}
+}
+
 // Close shuts down the dispatcher and waits for all workers to finish
 func (d *Dispatcher) Close() error {
+	// Wait for pending webhooks to be sent
+	d.Flush(2 * time.Second)
+
 	// Signal workers to stop
 	d.cancel()
 

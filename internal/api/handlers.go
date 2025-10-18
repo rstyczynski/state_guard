@@ -204,15 +204,15 @@ func (s *Server) handleTransition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create webhook dispatcher if configured
+	// Get or create webhook dispatcher for this asset type (long-lived, server-scoped)
 	var dispatcher *webhook.Dispatcher
 	if len(assetType.Webhooks) > 0 {
-		dispatcher, err = webhook.NewDispatcher(5, 100, assetType)
+		dispatcher, err = s.getOrCreateDispatcher(assetTypePath, assetType)
 		if err != nil {
-			respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("Failed to create webhook dispatcher: %v", err))
+			respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("Failed to get webhook dispatcher: %v", err))
 			return
 		}
-		defer dispatcher.Close()
+		// NOTE: Do NOT close dispatcher here - it's managed by the server lifecycle
 	}
 
 	// Load FSM from storage with webhook support
