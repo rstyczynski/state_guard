@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -86,14 +85,7 @@ func (s *Server) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
 			respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("Failed to create webhook dispatcher: %v", err))
 			return
 		}
-		// Don't close dispatcher immediately - let it process webhooks asynchronously
-		go func() {
-			// Wait for webhooks to complete processing using configured timeouts, then close
-			if err := dispatcher.WaitForCompletion(); err != nil {
-				log.Printf("Warning: Webhook completion timeout: %v", err)
-			}
-			dispatcher.Close()
-		}()
+		defer dispatcher.Close()
 	}
 
 	// Create FSM instance with webhook support
@@ -220,14 +212,7 @@ func (s *Server) handleTransition(w http.ResponseWriter, r *http.Request) {
 			respondError(w, r, http.StatusInternalServerError, fmt.Sprintf("Failed to create webhook dispatcher: %v", err))
 			return
 		}
-		// Don't close dispatcher immediately - let it process webhooks asynchronously
-		go func() {
-			// Wait for webhooks to complete processing using configured timeouts, then close
-			if err := dispatcher.WaitForCompletion(); err != nil {
-				log.Printf("Warning: Webhook completion timeout: %v", err)
-			}
-			dispatcher.Close()
-		}()
+		defer dispatcher.Close()
 	}
 
 	// Load FSM from storage with webhook support

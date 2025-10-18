@@ -8,7 +8,7 @@ webhooks:
     state: RUNNING
     url: http://localhost:8081/webhooks/server-running
     method: POST
-    timeout: 10s
+    timeout: 5s
     headers:
       X-Event-Type: server-running
       Authorization: Bearer your-webhook-token-here
