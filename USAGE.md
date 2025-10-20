@@ -254,11 +254,17 @@ The CLI provides an interactive interface for testing and development.
 #### Option 1: Using Pre-built Binary
 
 ```bash
-# Start with defaults
+# Start with defaults (asset-dir: examples)
 ./bin/fsm
 
 # Start with custom database
 ./bin/fsm --db data/test.db
+
+# Start with custom asset directory
+./bin/fsm --asset-dir /path/to/assets --db data/test.db
+
+# Load asset directly on startup
+./bin/fsm --asset-type web_server_asset_type.yaml --id web1 --db data/test.db
 ```
 
 #### Option 2: Using Go Run
@@ -267,9 +273,16 @@ The CLI provides an interactive interface for testing and development.
 # Development mode
 go run cmd/fsm/main.go
 
-# With custom database
-go run cmd/fsm/main.go --db data/test.db
+# With custom settings
+go run cmd/fsm/main.go --asset-dir examples --db data/test.db
 ```
+
+#### Command-Line Flags
+
+- `--asset-type` - Asset type file name to load on startup
+- `--asset-dir` - Directory containing asset type YAML files (default: examples)
+- `--db` - Path to SQLite database file (optional, uses in-memory if not specified)
+- `--id` - Asset instance ID (required when using --asset-type)
 
 ### Interactive Commands
 
@@ -279,16 +292,20 @@ Once the CLI is running, you'll see a prompt where you can enter commands.
 
 ```bash
 # Load an asset type (creates or loads existing asset)
-load-asset examples/web_server_asset_type.yaml web1
+# Asset type files are loaded from --asset-dir (default: examples)
+load-asset web_server_asset_type.yaml web1
 
 # Load a different asset
-load-asset examples/database_asset_type.yaml db1
+load-asset database_asset_type.yaml db1
 
 # List all persisted instances
 list-instances
 
-# Switch to a different instance
-load-instance web1 examples/web_server_asset_type.yaml
+# Switch to a different instance (asset type auto-loaded if stored)
+load-instance web1
+
+# Or specify asset type explicitly
+load-instance web1 web_server_asset_type.yaml
 
 # Delete an instance
 delete-instance web1
@@ -343,8 +360,8 @@ quit
 # Start the CLI with persistence
 ./bin/fsm --db data/demo.db
 
-# Load a web server asset
-> load-asset examples/web_server_asset_type.yaml web1
+# Load a web server asset (from examples/ directory)
+> load-asset web_server_asset_type.yaml web1
 Asset type loaded: web-server
 FSM loaded: generic_lifecycle
 Instance ID: web1
@@ -390,8 +407,8 @@ Transitioned: RUNNING -> STOPPING
 > final
 true
 
-# Load a database asset
-> load-asset examples/database_asset_type.yaml db1
+# Load a database asset (from examples/ directory)
+> load-asset database_asset_type.yaml db1
 Asset type loaded: database
 FSM loaded: generic_lifecycle
 Instance ID: db1
@@ -431,8 +448,8 @@ curl -X POST http://localhost:8080/api/v1/assets \
   -H "Content-Type: application/json" \
   -d '{"id": "web1", "asset_type": "web-server"}'
 
-# CLI
-load-asset examples/web_server_asset_type.yaml web1
+# CLI (asset files loaded from examples/ directory by default)
+load-asset web_server_asset_type.yaml web1
 ```
 
 ### 2. Database (`database_asset_type.yaml`)
@@ -453,7 +470,7 @@ curl -X POST http://localhost:8080/api/v1/assets \
   -d '{"id": "db1", "asset_type": "database"}'
 
 # CLI
-load-asset examples/database_asset_type.yaml db1
+load-asset database_asset_type.yaml db1
 ```
 
 ### 3. Simple Service (`simple_asset_type.yaml`)
@@ -471,7 +488,7 @@ curl -X POST http://localhost:8080/api/v1/assets \
   -d '{"id": "service1", "asset_type": "simple-service"}'
 
 # CLI
-load-asset examples/simple_asset_type.yaml service1
+load-asset simple_asset_type.yaml service1
 ```
 
 ---
@@ -647,7 +664,7 @@ ls examples/*.yaml
 **Error: --id is required**
 ```bash
 # Always provide an ID when loading an asset
-load-asset examples/web_server_asset_type.yaml web1
+load-asset web_server_asset_type.yaml web1
 ```
 
 **Error: Invalid transition**

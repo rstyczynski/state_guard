@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 
 func main() {
 	assetTypeFile := flag.String("asset-type", "", "Path to Asset Type YAML file")
-	configFile := flag.String("config", "", "Path to FSM YAML configuration file (DEPRECATED: use --asset-type)")
+	assetDir := flag.String("asset-dir", "examples", "Directory containing asset type YAML files")
 	dbPath := flag.String("db", "", "Path to SQLite database for persistence (optional)")
 	instanceID := flag.String("id", "", "Asset instance ID (asset name) - REQUIRED")
 	flag.Parse()
@@ -46,16 +47,17 @@ func main() {
 		defer store.Close()
 	}
 
-	// Load FSM from asset type or config
+	// Load FSM from asset type
 	if *assetTypeFile != "" {
 		// Require ID when using --asset-type
 		if *instanceID == "" {
 			fmt.Fprintf(os.Stderr, "Error: --id is required when using --asset-type\n")
-			fmt.Fprintf(os.Stderr, "Example: ./fsm --asset-type examples/web_server_asset_type.yaml --id server1\n")
+			fmt.Fprintf(os.Stderr, "Example: ./fsm --asset-type web_server_asset_type.yaml --id server1\n")
 			os.Exit(1)
 		}
 
-		f, dispatcher, err = loadAssetType(*assetTypeFile, *instanceID, store)
+		assetPath := resolveAssetPath(*assetTypeFile, *assetDir)
+		f, dispatcher, err = loadAssetType(assetPath, *instanceID, store)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -70,36 +72,10 @@ func main() {
 			fmt.Printf("Webhooks: enabled (%d workers)\n", dispatcher.WorkerCount())
 		}
 		fmt.Println()
-	} else if *configFile != "" {
-		// DEPRECATED: Direct FSM loading
-		fmt.Println("Warning: --config is deprecated, use --asset-type instead")
-
-		if *instanceID == "" {
-			fmt.Fprintf(os.Stderr, "Error: --id is required\n")
-			fmt.Fprintf(os.Stderr, "Example: ./fsm --config examples/lifecycle.yaml --id server1\n")
-			os.Exit(1)
-		}
-
-		def, err := fsm.LoadDefinition(*configFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading definition: %v\n", err)
-			os.Exit(1)
-		}
-
-		f, err = fsm.New(def, *instanceID, store)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating FSM: %v\n", err)
-			os.Exit(1)
-		}
-
-		fmt.Printf("FSM '%s' loaded successfully\n", f.Name())
-		fmt.Printf("FSM ID: %s\n", f.ID())
-		fmt.Printf("Initial state: %s\n", f.InitialState())
-		fmt.Printf("Current state: %s\n\n", f.CurrentState())
 	} else {
 		fmt.Println("FSM CLI - No configuration loaded")
-		fmt.Println("Use 'load-asset <asset-type-path> <id>' to load an asset")
-		fmt.Println("Or 'load <fsm-path> <id>' for direct FSM loading (deprecated)")
+		fmt.Println("Use 'load-asset <asset-type-name> <id>' to load an asset")
+		fmt.Printf("Asset directory: %s\n", *assetDir)
 	}
 
 	// Ensure webhook dispatcher is cleaned up on exit
@@ -134,13 +110,16 @@ func main() {
 		switch cmd {
 		case "load-asset":
 			if len(parts) < 3 {
-				fmt.Println("Error: load-asset requires an asset type path and an instance ID")
-				fmt.Println("Usage: load-asset <asset-type-path> <id>")
-				fmt.Println("Example: load-asset examples/web_server_asset_type.yaml server1")
+				fmt.Println("Error: load-asset requires an asset type name and an instance ID")
+				fmt.Println("Usage: load-asset <asset-type-name> <id>")
+				fmt.Println("Example: load-asset web_server_asset_type.yaml server1")
 				continue
 			}
-			assetTypePath := parts[1]
+			assetTypeName := parts[1]
 			assetID := parts[2]
+
+			// Resolve asset path relative to asset directory
+			assetPath := resolveAssetPath(assetTypeName, *assetDir)
 
 			// Close existing dispatcher if any
 			if dispatcher != nil {
@@ -149,7 +128,7 @@ func main() {
 			}
 
 			var newDisp *webhook.Dispatcher
-			newFSM, newDisp, err := loadAssetType(assetTypePath, assetID, store)
+			newFSM, newDisp, err := loadAssetType(assetPath, assetID, store)
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 			} else {
@@ -165,48 +144,12 @@ func main() {
 				}
 			}
 
-		case "load":
-			fmt.Println("Warning: 'load' is deprecated, use 'load-asset' instead")
-			if len(parts) < 3 {
-				fmt.Println("Error: load requires a file path and an instance ID")
-				fmt.Println("Usage: load <path> <id>")
-				fmt.Println("Example: load examples/lifecycle.yaml server1")
-				continue
-			}
-			filepath := parts[1]
-			instanceID := parts[2]
-
-			def, err := fsm.LoadDefinition(filepath)
-			if err != nil {
-				fmt.Printf("Error loading definition: %v\n", err)
-				continue
-			}
-
-			newFSM, err := fsm.New(def, instanceID, store)
-			if err != nil {
-				fmt.Printf("Error creating FSM: %v\n", err)
-			} else {
-				f = newFSM
-				fmt.Printf("FSM '%s' loaded successfully\n", f.Name())
-				fmt.Printf("FSM ID: %s\n", f.ID())
-				fmt.Printf("Initial state: %s\n", f.InitialState())
-				fmt.Printf("Current state: %s\n", f.CurrentState())
-			}
-
 		case "current-state":
 			if f == nil {
-				fmt.Println("Error: No FSM loaded. Use 'load <path>' first")
+				fmt.Println("Error: No FSM loaded. Use 'load-asset' first")
 				continue
 			}
 			fmt.Printf("Current state: %s\n", f.CurrentState())
-
-		case "current": // Deprecated alias for backward compatibility
-			if f == nil {
-				fmt.Println("Error: No FSM loaded. Use 'load <path>' first")
-				continue
-			}
-			fmt.Printf("Current state: %s\n", f.CurrentState())
-			fmt.Println("Note: 'current' is deprecated, use 'current-state' instead")
 
 		case "validate":
 			if len(parts) < 2 {
@@ -231,7 +174,7 @@ func main() {
 
 		case "states":
 			if f == nil {
-				fmt.Println("Error: No FSM loaded. Use 'load <path>' first")
+				fmt.Println("Error: No FSM loaded. Use 'load-asset' first")
 				continue
 			}
 			fmt.Println("All states:")
@@ -245,7 +188,7 @@ func main() {
 
 		case "available":
 			if f == nil {
-				fmt.Println("Error: No FSM loaded. Use 'load <path>' first")
+				fmt.Println("Error: No FSM loaded. Use 'load-asset' first")
 				continue
 			}
 			available := f.AvailableTransitions()
@@ -260,7 +203,7 @@ func main() {
 
 		case "transition":
 			if f == nil {
-				fmt.Println("Error: No FSM loaded. Use 'load <path>' first")
+				fmt.Println("Error: No FSM loaded. Use 'load-asset' first")
 				continue
 			}
 			if len(parts) < 2 {
@@ -279,7 +222,7 @@ func main() {
 
 		case "reset":
 			if f == nil {
-				fmt.Println("Error: No FSM loaded. Use 'load <path>' first")
+				fmt.Println("Error: No FSM loaded. Use 'load-asset' first")
 				continue
 			}
 			err := f.Reset()
@@ -291,7 +234,7 @@ func main() {
 
 		case "final":
 			if f == nil {
-				fmt.Println("Error: No FSM loaded. Use 'load <path>' first")
+				fmt.Println("Error: No FSM loaded. Use 'load-asset' first")
 				continue
 			}
 			if f.IsFinalState() {
@@ -362,28 +305,31 @@ func main() {
 			}
 
 			// Determine asset type path
-			var assetTypePath string
+			var assetTypeName string
 			if len(parts) >= 3 {
-				// User provided asset type path
-				assetTypePath = parts[2]
+				// User provided asset type name
+				assetTypeName = parts[2]
 			} else if instance.AssetTypeName != "" {
-				// Use stored asset type name as path
-				assetTypePath = instance.AssetTypeName
-				fmt.Printf("Using stored asset type: %s\n", assetTypePath)
+				// Use stored asset type name
+				assetTypeName = instance.AssetTypeName
+				fmt.Printf("Using stored asset type: %s\n", assetTypeName)
 			} else {
 				// No asset type stored (legacy instance)
 				fmt.Printf("Instance '%s' has no asset type stored (created before v1.3)\n", instanceID)
-				fmt.Println("Usage: load-instance <id> <asset-type-path>")
-				fmt.Println("Example: load-instance", instanceID, "examples/web_server_asset_type.yaml")
+				fmt.Println("Usage: load-instance <id> <asset-type-name>")
+				fmt.Println("Example: load-instance", instanceID, "web_server_asset_type.yaml")
 				continue
 			}
+
+			// Resolve asset path relative to asset directory
+			assetTypePath := resolveAssetPath(assetTypeName, *assetDir)
 
 			// Load asset type
 			assetType, err := fsm.LoadAssetType(assetTypePath)
 			if err != nil {
 				fmt.Printf("Error loading asset type: %v\n", err)
 				if len(parts) < 3 {
-					fmt.Println("Try: load-instance", instanceID, "<asset-type-path>")
+					fmt.Println("Try: load-instance", instanceID, "<asset-type-name>")
 				}
 				continue
 			}
@@ -488,6 +434,18 @@ func main() {
 	}
 }
 
+// resolveAssetPath resolves an asset type name to a full path
+// If the name is already a path (contains / or is absolute), returns it as-is
+// Otherwise, joins it with the asset directory
+func resolveAssetPath(name, assetDir string) string {
+	// If already an absolute path or contains directory separators, use as-is
+	if filepath.IsAbs(name) || strings.Contains(name, string(filepath.Separator)) {
+		return name
+	}
+	// Otherwise, join with asset directory
+	return filepath.Join(assetDir, name)
+}
+
 // loadAssetType loads an asset type and creates FSM with webhook support
 // assetTypePath is the file path to the asset type YAML file (e.g., "examples/web_server_asset_type.yaml")
 func loadAssetType(assetTypePath, instanceID string, store storage.Storage) (*fsm.FSM, *webhook.Dispatcher, error) {
@@ -526,25 +484,23 @@ func loadAssetType(assetTypePath, instanceID string, store storage.Storage) (*fs
 
 func printHelp() {
 	fmt.Println("Commands:")
-	fmt.Println("  load-asset <asset-type-path> <id>  - Load asset type with instance ID")
-	fmt.Println("                                       Example: load-asset examples/web_server_asset_type.yaml server1")
-	fmt.Println("  load <fsm-path> <id>  - Load FSM definition directly (DEPRECATED)")
-	fmt.Println("                          Example: load examples/lifecycle.yaml server1")
-	fmt.Println("  transition <to>       - Transition to a new state")
-	fmt.Println("  current-state         - Show current state")
-	fmt.Println("  validate <path>       - Validate FSM YAML definition")
+	fmt.Println("  load-asset <name> <id>  - Load asset type with instance ID")
+	fmt.Println("                            Example: load-asset web_server_asset_type.yaml server1")
+	fmt.Println("  transition <to>         - Transition to a new state")
+	fmt.Println("  current-state           - Show current state")
+	fmt.Println("  validate <path>         - Validate FSM YAML definition")
 	fmt.Println()
 	fmt.Println("Instance management (requires --db):")
-	fmt.Println("  list-instances        - Show all persisted FSM instances")
-	fmt.Println("  load-instance <id> [asset-type-path]  - Load existing instance by ID")
-	fmt.Println("                                          (asset type is auto-loaded if stored)")
-	fmt.Println("  delete-instance <id>  - Delete a persisted instance")
+	fmt.Println("  list-instances          - Show all persisted FSM instances")
+	fmt.Println("  load-instance <id> [name]  - Load existing instance by ID")
+	fmt.Println("                               (asset type is auto-loaded if stored)")
+	fmt.Println("  delete-instance <id>    - Delete a persisted instance")
 	fmt.Println()
 	fmt.Println("Additional commands:")
-	fmt.Println("  states                - List all states")
-	fmt.Println("  available             - Show available transitions")
-	fmt.Println("  reset                 - Reset to initial state")
-	fmt.Println("  final                 - Check if in final state")
-	fmt.Println("  help                  - Show this help")
-	fmt.Println("  exit                  - Exit program")
+	fmt.Println("  states                  - List all states")
+	fmt.Println("  available               - Show available transitions")
+	fmt.Println("  reset                   - Reset to initial state")
+	fmt.Println("  final                   - Check if in final state")
+	fmt.Println("  help                    - Show this help")
+	fmt.Println("  exit                    - Exit program")
 }
