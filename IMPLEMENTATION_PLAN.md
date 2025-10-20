@@ -235,7 +235,25 @@ GET    /api/v1/definitions      - List available FSM definitions
 
 ---
 
-## Phase 5: Advanced Features
+## Phase 5: Webhook improvements
+
+  1. Webhook Retry Logic
+    - Exponential backoff
+    - Configurable retry count
+    - Dead letter queue for failed webhooks
+  2. Monitoring
+    - Metrics for webhook success/failure rates
+    - Alerts for high failure rates
+    - Dashboard for webhook health
+  3. Webhook Status Endpoint
+    - Query pending/failed webhooks
+    - Manual retry capability
+    - Webhook audit log
+
+    
+---
+
+## Phase 6: Advanced Features
 
 **Status:** Future
 **Dependencies:** Phase 2.3, Phase 3, Phase 4
