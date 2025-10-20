@@ -261,7 +261,7 @@ The CLI provides an interactive interface for testing and development.
 ./bin/fsm --db data/test.db
 
 # Start with custom asset directory
-./bin/fsm --asset-dir /path/to/assets --db data/test.db
+./bin/fsm --asset-dir examples --db data/test.db
 
 # Load asset directly on startup
 ./bin/fsm --asset-type web_server_asset_type.yaml --id web1 --db data/test.db
