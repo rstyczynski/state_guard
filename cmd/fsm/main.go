@@ -74,7 +74,7 @@ func main() {
 		fmt.Println()
 	} else {
 		fmt.Println("FSM CLI - No configuration loaded")
-		fmt.Println("Use 'load-asset <asset-type-name> <id>' to load an asset")
+		fmt.Println("Use 'load-asset <asset-type-name> <id>' to create or load an asset")
 		fmt.Printf("Asset directory: %s\n", *assetDir)
 	}
 
@@ -113,6 +113,7 @@ func main() {
 				fmt.Println("Error: load-asset requires an asset type name and an instance ID")
 				fmt.Println("Usage: load-asset <asset-type-name> <id>")
 				fmt.Println("Example: load-asset web_server_asset_type.yaml server1")
+				fmt.Println("Note: Creates new asset or loads existing one if ID already exists")
 				continue
 			}
 			assetTypeName := parts[1]
@@ -446,7 +447,8 @@ func resolveAssetPath(name, assetDir string) string {
 	return filepath.Join(assetDir, name)
 }
 
-// loadAssetType loads an asset type and creates FSM with webhook support
+// loadAssetType loads an asset type and creates OR loads FSM with webhook support
+// If the instance already exists in storage, it loads it. Otherwise, it creates a new one.
 // assetTypePath is the file path to the asset type YAML file (e.g., "examples/web_server_asset_type.yaml")
 func loadAssetType(assetTypePath, instanceID string, store storage.Storage) (*fsm.FSM, *webhook.Dispatcher, error) {
 	// Load asset type
@@ -469,9 +471,31 @@ func loadAssetType(assetTypePath, instanceID string, store storage.Storage) (*fs
 		}
 	}
 
-	// Create FSM with webhook support
-	// Store the asset type FILE PATH (not just the name) so it can be reloaded
-	f, err := fsm.NewWithWebhook(assetType.StateMachineRef, instanceID, assetTypePath, store, dispatcher)
+	// Check if instance already exists in storage
+	var f *fsm.FSM
+	if store != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err := store.GetInstance(ctx, instanceID)
+		cancel()
+
+		if err == nil {
+			// Instance exists, load it from storage
+			ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+			f, err = fsm.LoadFromStorageWithWebhook(ctx2, instanceID, assetType.StateMachineRef, assetTypePath, store, dispatcher)
+			cancel2()
+
+			if err != nil {
+				if dispatcher != nil {
+					dispatcher.Close()
+				}
+				return nil, nil, fmt.Errorf("failed to load existing instance: %w", err)
+			}
+			return f, dispatcher, nil
+		}
+	}
+
+	// Instance doesn't exist, create new one
+	f, err = fsm.NewWithWebhook(assetType.StateMachineRef, instanceID, assetTypePath, store, dispatcher)
 	if err != nil {
 		if dispatcher != nil {
 			dispatcher.Close()
@@ -484,7 +508,7 @@ func loadAssetType(assetTypePath, instanceID string, store storage.Storage) (*fs
 
 func printHelp() {
 	fmt.Println("Commands:")
-	fmt.Println("  load-asset <name> <id>  - Load asset type with instance ID")
+	fmt.Println("  load-asset <name> <id>  - Create or load asset instance")
 	fmt.Println("                            Example: load-asset web_server_asset_type.yaml server1")
 	fmt.Println("  transition <to>         - Transition to a new state")
 	fmt.Println("  current-state           - Show current state")
