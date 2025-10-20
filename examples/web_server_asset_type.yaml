@@ -7,7 +7,7 @@ webhooks:
   # Notify when server enters RUNNING state
   - condition: on_enter
     state: RUNNING
-    url: https://example.com/webhooks/server-running
+    url: https://localhost/webhooks/server-running
     method: POST
     timeout: 5s
     headers:
@@ -17,7 +17,7 @@ webhooks:
   # Notify when server exits RUNNING state
   - condition: on_exit
     state: RUNNING
-    url: https://example.com/webhooks/server-stopped
+    url: https://localhost/webhooks/server-stopped
     method: POST
     timeout: 5s
     headers:
@@ -27,14 +27,14 @@ webhooks:
   - condition: on_transition
     from: CREATED
     to: STARTING
-    url: https://example.com/webhooks/server-starting
+    url: https://localhost/webhooks/server-starting
     method: POST
     timeout: 10s
 
   # Notify when server enters FAILED state
   - condition: on_enter
     state: FAILED
-    url: https://example.com/webhooks/server-failed
+    url: https://localhost/webhooks/server-failed
     method: POST
     timeout: 5s
     headers:
@@ -44,6 +44,6 @@ webhooks:
   # Notify when entering maintenance mode
   - condition: on_enter
     state: MAINTENANCE
-    url: https://example.com/webhooks/maintenance-start
+    url: https://localhost/webhooks/maintenance-start
     method: POST
     timeout: 5s

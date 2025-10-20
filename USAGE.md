@@ -325,8 +325,10 @@ available
 
 # Perform a state transition
 transition STARTING
+# ↑ Webhook fires: on_enter STARTING with error as no one listens on target port
+
 transition RUNNING
-# ↑ Webhook fires: on_enter RUNNING
+# ↑ Webhook fires: on_enter RUNNING with error as no one listens on target port
 
 # Reset to initial state
 reset
