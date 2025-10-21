@@ -29,23 +29,21 @@ const (
 type Layout string
 
 const (
-	LayoutHierarchical Layout = "hierarchical"
-	LayoutCircular     Layout = "circular"
 	LayoutVertical     Layout = "vertical"
 	LayoutHorizontal   Layout = "horizontal"
 )
 
 // Options for diagram generation
 type Options struct {
-	Format            Format
-	Layout            Layout
-	HighlightCurrent  bool
-	ShowHistory       bool
-	ShowAvailable     bool
-	CurrentState      string
-	AvailableStates   []string
-	HistoryPath       []HistoryEntry
-	ColorScheme       string // "light" or "dark"
+	Format           Format
+	Layout           Layout
+	HighlightCurrent bool
+	ShowHistory      bool
+	ShowAvailable    bool
+	CurrentState     string
+	AvailableStates  []string
+	HistoryPath      []HistoryEntry
+	ColorScheme      string // "light" or "dark"
 }
 
 // HistoryEntry represents a state transition in history
@@ -57,32 +55,32 @@ type HistoryEntry struct {
 
 // GraphData represents structured graph data for JSON export
 type GraphData struct {
-	Name        string       `json:"name"`
-	InitialState string      `json:"initial_state"`
-	FinalStates []string     `json:"final_states"`
-	CurrentState string      `json:"current_state,omitempty"`
-	Nodes       []NodeData   `json:"nodes"`
-	Edges       []EdgeData   `json:"edges"`
+	Name         string     `json:"name"`
+	InitialState string     `json:"initial_state"`
+	FinalStates  []string   `json:"final_states"`
+	CurrentState string     `json:"current_state,omitempty"`
+	Nodes        []NodeData `json:"nodes"`
+	Edges        []EdgeData `json:"edges"`
 }
 
 // NodeData represents a state node
 type NodeData struct {
-	ID           string `json:"id"`
-	Label        string `json:"label"`
-	IsInitial    bool   `json:"is_initial"`
-	IsFinal      bool   `json:"is_final"`
-	IsCurrent    bool   `json:"is_current"`
-	IsAvailable  bool   `json:"is_available"`
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	IsInitial   bool   `json:"is_initial"`
+	IsFinal     bool   `json:"is_final"`
+	IsCurrent   bool   `json:"is_current"`
+	IsAvailable bool   `json:"is_available"`
 }
 
 // EdgeData represents a transition edge
 type EdgeData struct {
-	From        string `json:"from"`
-	To          string `json:"to"`
-	IsWildcard  bool   `json:"is_wildcard"`
-	IsBidirect  bool   `json:"is_bidirectional"`
-	IsHistory   bool   `json:"is_history"`
-	Style       string `json:"style"` // "solid", "dashed"
+	From       string `json:"from"`
+	To         string `json:"to"`
+	IsWildcard bool   `json:"is_wildcard"`
+	IsBidirect bool   `json:"is_bidirectional"`
+	IsHistory  bool   `json:"is_history"`
+	Style      string `json:"style"` // "solid", "dashed"
 }
 
 // Generator generates state diagram visualizations
@@ -246,7 +244,7 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 		if isCurrent {
 			node.SetFillColor("lightgreen")
 			node.SetStyle(cgraph.FilledNodeStyle)
-			node.SetPenWidth(3.0)
+			//node.SetPenWidth(3.0)
 		} else if isAvailable {
 			node.SetFillColor("lightyellow")
 			node.SetStyle(cgraph.FilledNodeStyle)
@@ -327,12 +325,6 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 			return nil, err
 		}
 
-		// Dashed for recovery transitions
-		if g.isRecoveryTransition(trans.From, trans.To) {
-			edge.SetStyle(cgraph.DashedEdgeStyle)
-			edge.SetColor("orange")
-		}
-
 		// Highlight history path
 		if opts.ShowHistory && g.isInHistory(trans.From, trans.To, opts.HistoryPath) {
 			edge.SetColor("blue")
@@ -343,71 +335,9 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 	}
 
 	// Add legend
-	g.addLegend(graph, opts)
+	//g.addLegend(graph, opts)
 
 	return graph, nil
-}
-
-// addLegend adds a legend to the graph explaining colors and shapes
-func (g *Generator) addLegend(graph *cgraph.Graph, opts Options) error {
-	// Create a subgraph cluster for the legend
-	// Positioned at bottom center with horizontal layout
-	legend, err := graph.CreateSubGraphByName("cluster_legend")
-	if err != nil {
-		return err
-	}
-	legend.SetLabel("Legend")
-	legend.SetRankDir(cgraph.LRRank) // Horizontal layout for legend
-
-	// Create visual legend items as colored rectangles
-	// Rectangles are 50% size of diagram rectangles (diagram: 1.5x0.6, legend: 0.75x0.3)
-	// Text is 50% size (fontsize 7 instead of default 14)
-	legendItems := []struct {
-		name      string
-		label     string
-		color     string
-		penWidth  float64
-	}{
-		{"leg_initial", "Initial (bold)", "lightblue", 1.0},  // 50% of 2.0
-		{"leg_final", "Final (double)", "white", 2.0},        // 50% of 4.0
-		{"leg_current", "Current", "lightgreen", 1.5},        // 50% of 3.0
-		{"leg_available", "Available", "lightyellow", 0.5},   // 50% of 1.0
-		{"leg_error", "Error", "lightcoral", 0.5},            // 50% of 1.0
-		{"leg_normal", "Normal", "white", 0.5},               // 50% of 1.0
-	}
-
-	for _, item := range legendItems {
-		node, err := legend.CreateNodeByName(item.name)
-		if err != nil {
-			continue
-		}
-		node.SetLabel(item.label)
-		node.SetShape(cgraph.BoxShape)
-		node.SetFillColor(item.color)
-		node.SetStyle(cgraph.FilledNodeStyle)
-		node.SetPenWidth(item.penWidth)
-		// 50% size of diagram rectangles: 0.75 x 0.3 (diagram is 1.5 x 0.6)
-		node.SetWidth(0.75)
-		node.SetHeight(0.3)
-		node.SetFixedSize(true)
-		// 50% text size: fontsize 7 (default is 14)
-		node.SetFontSize(7.0)
-	}
-
-	return nil
-}
-
-// isRecoveryTransition checks if a transition is a recovery/backward transition
-func (g *Generator) isRecoveryTransition(from, to string) bool {
-	// Heuristic: transitions to STARTING from non-CREATED states
-	if to == "STARTING" && from != "CREATED" {
-		return true
-	}
-	// Transitions from STOPPED/FAILED backwards
-	if (from == "STOPPED" || from == "FAILED") && to == "STARTING" {
-		return true
-	}
-	return false
 }
 
 // isInHistory checks if a transition is in the history path
@@ -569,9 +499,6 @@ func (g *Generator) generateJSON(opts Options) ([]byte, error) {
 		}
 
 		style := "solid"
-		if g.isRecoveryTransition(trans.From, trans.To) {
-			style = "dashed"
-		}
 
 		edge := EdgeData{
 			From:       trans.From,
