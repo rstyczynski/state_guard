@@ -194,9 +194,9 @@ GET    /api/v1/definitions      - List available FSM definitions
 - **Rich Visual Elements:**
   - States: Circles (regular), double circles (final), bold outline (initial)
   - Color-coding: Current state vs available states, distinct styling for error states
-  - Transitions: Solid arrows (direct), dashed arrows (recovery), bidirectional arrows
-  - Wildcard transitions: Bold red arrows (→ FAILED)
-  - Layout algorithms: Hierarchical, circular, force-directed
+  - Transitions: Solid arrows (direct), dashed arrows (recovery), no bidirectional arrows
+  - Wildcard transitions: represent as ANY STATE → FAILED. No arrows from real states
+  - Layout algorithms: Hierarchical, circular, vertical, horizontal, no force-directed
 
 - **Instance-Specific Visualizations:**
   - Highlight current state of specific asset instance

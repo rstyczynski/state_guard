@@ -31,7 +31,8 @@ type Layout string
 const (
 	LayoutHierarchical Layout = "hierarchical"
 	LayoutCircular     Layout = "circular"
-	LayoutForce        Layout = "force"
+	LayoutVertical     Layout = "vertical"
+	LayoutHorizontal   Layout = "horizontal"
 )
 
 // Options for diagram generation
@@ -189,15 +190,24 @@ func (g *Generator) generateGraphViz(opts Options) ([]byte, error) {
 func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Graph, error) {
 	// Determine GraphViz layout engine
 	var layoutEngine string
+	var rankDir cgraph.RankDir
+
 	switch opts.Layout {
 	case LayoutHierarchical:
 		layoutEngine = "dot"
+		rankDir = cgraph.TBRank // Top to bottom
+	case LayoutVertical:
+		layoutEngine = "dot"
+		rankDir = cgraph.TBRank // Top to bottom (vertical)
+	case LayoutHorizontal:
+		layoutEngine = "dot"
+		rankDir = cgraph.LRRank // Left to right (horizontal)
 	case LayoutCircular:
 		layoutEngine = "circo"
-	case LayoutForce:
-		layoutEngine = "neato"
+		rankDir = cgraph.TBRank // Default for circo
 	default:
 		layoutEngine = "dot"
+		rankDir = cgraph.TBRank
 	}
 
 	graph, err := gv.Graph()
@@ -209,7 +219,7 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 	graph.SetLayout(layoutEngine)
 
 	// Set graph attributes
-	graph.SetRankDir(cgraph.TBRank) // Top to bottom
+	graph.SetRankDir(rankDir)
 	graph.SetBackgroundColor(g.getBackgroundColor(opts))
 
 	// Create nodes for each state
@@ -259,83 +269,74 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 		nodes[state] = node
 	}
 
-	// Build transition map for bidirectional detection
-	transitionMap := g.buildTransitionMap()
-
 	// Create edges for transitions
 	createdEdges := make(map[string]bool)
+	hasWildcard := false
+	wildcardTarget := ""
 
+	// First pass: check for wildcard transitions
 	for _, trans := range g.definition.Transitions {
 		if trans.From == "*" {
-			// Wildcard transition - create from all states
-			for _, fromState := range g.definition.States {
-				if fromState == trans.To {
-					continue // Skip self-loops from wildcards
-				}
-				edgeKey := fromState + "->" + trans.To
-				if createdEdges[edgeKey] {
-					continue
-				}
-
-				edge, err := graph.CreateEdgeByName("", nodes[fromState], nodes[trans.To])
-				if err != nil {
-					return nil, err
-				}
-				edge.SetColor("red")
-				edge.SetPenWidth(1.5)
-				edge.SetStyle(cgraph.DashedEdgeStyle)
-				createdEdges[edgeKey] = true
-			}
-		} else {
-			// Regular transition
-			edgeKey := trans.From + "->" + trans.To
-			if createdEdges[edgeKey] {
-				continue
-			}
-
-			// Check if bidirectional
-			reverseKey := trans.To + "->" + trans.From
-			isBidirectional := transitionMap[reverseKey]
-
-			edge, err := graph.CreateEdgeByName("", nodes[trans.From], nodes[trans.To])
-			if err != nil {
-				return nil, err
-			}
-
-			// Style based on transition type
-			if isBidirectional {
-				edge.SetDir(cgraph.BothDir)
-				createdEdges[reverseKey] = true // Mark reverse as created
-			}
-
-			// Dashed for recovery transitions
-			if g.isRecoveryTransition(trans.From, trans.To) {
-				edge.SetStyle(cgraph.DashedEdgeStyle)
-			}
-
-			// Highlight history path
-			if opts.ShowHistory && g.isInHistory(trans.From, trans.To, opts.HistoryPath) {
-				edge.SetColor("blue")
-				edge.SetPenWidth(2.0)
-			}
-
-			createdEdges[edgeKey] = true
+			hasWildcard = true
+			wildcardTarget = trans.To
+			break
 		}
+	}
+
+	// If we have wildcard, create a special "ANY STATE" node
+	if hasWildcard {
+		anyNode, err := graph.CreateNodeByName("ANY_STATE")
+		if err != nil {
+			return nil, err
+		}
+		anyNode.SetLabel("ANY STATE")
+		anyNode.SetShape(cgraph.BoxShape)
+		anyNode.SetFillColor("lightyellow")
+		anyNode.SetStyle(cgraph.FilledNodeStyle)
+
+		// Create arrow from ANY STATE to wildcard target
+		edge, err := graph.CreateEdgeByName("", anyNode, nodes[wildcardTarget])
+		if err != nil {
+			return nil, err
+		}
+		edge.SetColor("red")
+		edge.SetPenWidth(2.0)
+		edge.SetStyle(cgraph.DashedEdgeStyle)
+	}
+
+	// Second pass: create regular transitions (no bidirectional handling)
+	for _, trans := range g.definition.Transitions {
+		if trans.From == "*" {
+			continue // Already handled above
+		}
+
+		// Regular transition
+		edgeKey := trans.From + "->" + trans.To
+		if createdEdges[edgeKey] {
+			continue
+		}
+
+		edge, err := graph.CreateEdgeByName("", nodes[trans.From], nodes[trans.To])
+		if err != nil {
+			return nil, err
+		}
+
+		// Dashed for recovery transitions
+		if g.isRecoveryTransition(trans.From, trans.To) {
+			edge.SetStyle(cgraph.DashedEdgeStyle)
+			edge.SetColor("orange")
+		}
+
+		// Highlight history path
+		if opts.ShowHistory && g.isInHistory(trans.From, trans.To, opts.HistoryPath) {
+			edge.SetColor("blue")
+			edge.SetPenWidth(2.0)
+		}
+
+		createdEdges[edgeKey] = true
 	}
 
 	return graph, nil
-}
-
-// buildTransitionMap creates a map of all transitions for lookup
-func (g *Generator) buildTransitionMap() map[string]bool {
-	m := make(map[string]bool)
-	for _, trans := range g.definition.Transitions {
-		if trans.From != "*" {
-			key := trans.From + "->" + trans.To
-			m[key] = true
-		}
-	}
-	return m
 }
 
 // isRecoveryTransition checks if a transition is a recovery/backward transition
@@ -453,7 +454,31 @@ func (g *Generator) generateJSON(opts Options) ([]byte, error) {
 		availableMap[state] = true
 	}
 
-	// Add nodes
+	// Check if we have wildcard transitions
+	hasWildcard := false
+	wildcardTarget := ""
+	for _, trans := range g.definition.Transitions {
+		if trans.From == "*" {
+			hasWildcard = true
+			wildcardTarget = trans.To
+			break
+		}
+	}
+
+	// Add wildcard node if needed
+	if hasWildcard {
+		node := NodeData{
+			ID:          "ANY_STATE",
+			Label:       "ANY STATE",
+			IsInitial:   false,
+			IsFinal:     false,
+			IsCurrent:   false,
+			IsAvailable: false,
+		}
+		data.Nodes = append(data.Nodes, node)
+	}
+
+	// Add regular state nodes
 	for _, state := range g.definition.States {
 		node := NodeData{
 			ID:          state,
@@ -466,45 +491,39 @@ func (g *Generator) generateJSON(opts Options) ([]byte, error) {
 		data.Nodes = append(data.Nodes, node)
 	}
 
-	// Build transition map for bidirectional detection
-	transitionMap := g.buildTransitionMap()
+	// Add wildcard edge if needed
+	if hasWildcard {
+		edge := EdgeData{
+			From:       "ANY_STATE",
+			To:         wildcardTarget,
+			IsWildcard: true,
+			IsBidirect: false,
+			IsHistory:  false,
+			Style:      "dashed",
+		}
+		data.Edges = append(data.Edges, edge)
+	}
 
-	// Add edges
+	// Add regular edges (no bidirectional logic)
 	for _, trans := range g.definition.Transitions {
 		if trans.From == "*" {
-			// Wildcard transitions
-			for _, fromState := range g.definition.States {
-				if fromState == trans.To {
-					continue
-				}
-				edge := EdgeData{
-					From:       fromState,
-					To:         trans.To,
-					IsWildcard: true,
-					Style:      "dashed",
-				}
-				data.Edges = append(data.Edges, edge)
-			}
-		} else {
-			// Check if bidirectional
-			reverseKey := trans.To + "->" + trans.From
-			isBidirectional := transitionMap[reverseKey]
-
-			style := "solid"
-			if g.isRecoveryTransition(trans.From, trans.To) {
-				style = "dashed"
-			}
-
-			edge := EdgeData{
-				From:       trans.From,
-				To:         trans.To,
-				IsWildcard: false,
-				IsBidirect: isBidirectional,
-				IsHistory:  opts.ShowHistory && g.isInHistory(trans.From, trans.To, opts.HistoryPath),
-				Style:      style,
-			}
-			data.Edges = append(data.Edges, edge)
+			continue // Already handled above
 		}
+
+		style := "solid"
+		if g.isRecoveryTransition(trans.From, trans.To) {
+			style = "dashed"
+		}
+
+		edge := EdgeData{
+			From:       trans.From,
+			To:         trans.To,
+			IsWildcard: false,
+			IsBidirect: false, // No bidirectional arrows per updated spec
+			IsHistory:  opts.ShowHistory && g.isInHistory(trans.From, trans.To, opts.HistoryPath),
+			Style:      style,
+		}
+		data.Edges = append(data.Edges, edge)
 	}
 
 	return json.MarshalIndent(data, "", "  ")
@@ -555,9 +574,11 @@ func ParseLayout(s string) (Layout, error) {
 		return LayoutHierarchical, nil
 	case "circular", "circo":
 		return LayoutCircular, nil
-	case "force", "neato":
-		return LayoutForce, nil
+	case "vertical", "tb":
+		return LayoutVertical, nil
+	case "horizontal", "lr":
+		return LayoutHorizontal, nil
 	default:
-		return "", fmt.Errorf("unsupported layout: %s (supported: hierarchical, circular, force)", s)
+		return "", fmt.Errorf("unsupported layout: %s (supported: hierarchical, circular, vertical, horizontal)", s)
 	}
 }

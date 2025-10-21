@@ -52,8 +52,10 @@ func TestParseLayout(t *testing.T) {
 		{"empty defaults to hierarchical", "", LayoutHierarchical, false},
 		{"circular", "circular", LayoutCircular, false},
 		{"circo alias", "circo", LayoutCircular, false},
-		{"force", "force", LayoutForce, false},
-		{"neato alias", "neato", LayoutForce, false},
+		{"vertical", "vertical", LayoutVertical, false},
+		{"tb alias", "tb", LayoutVertical, false},
+		{"horizontal", "horizontal", LayoutHorizontal, false},
+		{"lr alias", "lr", LayoutHorizontal, false},
 		{"invalid", "invalid", "", true},
 	}
 
@@ -293,7 +295,7 @@ func TestLayoutAlgorithms(t *testing.T) {
 
 	gen := NewGenerator(def, nil)
 
-	layouts := []Layout{LayoutHierarchical, LayoutCircular, LayoutForce}
+	layouts := []Layout{LayoutHierarchical, LayoutCircular, LayoutVertical, LayoutHorizontal}
 
 	for _, layout := range layouts {
 		t.Run(string(layout), func(t *testing.T) {
@@ -340,9 +342,17 @@ func TestWildcardTransitions(t *testing.T) {
 	}
 
 	jsonStr := string(data)
-	// Should have wildcard edges
+	// Should have wildcard edge from ANY_STATE
 	if !strings.Contains(jsonStr, `"is_wildcard": true`) {
 		t.Error("JSON should mark wildcard transitions")
+	}
+	// Should have ANY_STATE node
+	if !strings.Contains(jsonStr, `"ANY_STATE"`) {
+		t.Error("JSON should contain ANY_STATE node for wildcard")
+	}
+	// Wildcard edge should be from ANY_STATE to target (note: JSON uses "from" not "From")
+	if !strings.Contains(jsonStr, `"from": "ANY_STATE"`) {
+		t.Errorf("Wildcard edge should be from ANY_STATE. Got JSON: %s", jsonStr)
 	}
 }
 

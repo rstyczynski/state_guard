@@ -387,8 +387,9 @@ func (h *Handler) generateHTML(instanceID string) string {
                 <label for="layout">Layout:</label>
                 <select id="layout">
                     <option value="hierarchical" selected>Hierarchical</option>
+                    <option value="vertical">Vertical</option>
+                    <option value="horizontal">Horizontal</option>
                     <option value="circular">Circular</option>
-                    <option value="force">Force-Directed</option>
                 </select>
             </div>
 

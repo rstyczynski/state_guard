@@ -309,7 +309,7 @@ paths:
         description: Layout algorithm
         schema:
           type: string
-          enum: [hierarchical, circular, force]
+          enum: [hierarchical, circular, vertical, horizontal]
           default: hierarchical
       - name: scheme
         in: query
@@ -376,7 +376,7 @@ paths:
         description: Layout algorithm
         schema:
           type: string
-          enum: [hierarchical, circular, force]
+          enum: [hierarchical, circular, vertical, horizontal]
           default: hierarchical
       - name: available
         in: query
@@ -459,7 +459,7 @@ paths:
         description: Layout algorithm
         schema:
           type: string
-          enum: [hierarchical, circular, force]
+          enum: [hierarchical, circular, vertical, horizontal]
           default: hierarchical
     get:
       tags:
