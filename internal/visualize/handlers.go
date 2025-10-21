@@ -215,6 +215,12 @@ func (h *Handler) parseOptions(r *http.Request) (Format, Layout, Options, error)
 		opts.ColorScheme = scheme
 	}
 
+	// Parse highlight_state for timeline slider (overrides actual current state)
+	if highlightState := r.URL.Query().Get("highlight_state"); highlightState != "" {
+		opts.HighlightCurrent = true
+		opts.CurrentState = highlightState
+	}
+
 	return format, layout, opts, nil
 }
 
@@ -582,7 +588,7 @@ func (h *Handler) generateHTML(instanceID string) string {
             }
         }
 
-        function refreshDiagram() {
+        function refreshDiagram(highlightState) {
             const format = document.getElementById('format').value;
             const layout = document.getElementById('layout').value;
             const history = document.getElementById('history').checked;
@@ -595,6 +601,11 @@ func (h *Handler) generateHTML(instanceID string) string {
                 available: available.toString(),
                 _t: new Date().getTime() // Cache-busting timestamp
             });
+
+            // Add highlight_state parameter for timeline slider
+            if (highlightState) {
+                params.set('highlight_state', highlightState);
+            }
 
             const url = '/api/v1/visualize/asset/' + instanceID + '?' + params.toString();
             const diagramDiv = document.getElementById('diagram');
@@ -614,7 +625,9 @@ func (h *Handler) generateHTML(instanceID string) string {
                         return blob.text().then(svg => {
                             diagramDiv.innerHTML = svg;
                             enableInteractivity();
-                            resetTimelinePosition();
+                            if (!highlightState) {
+                                resetTimelinePosition();
+                            }
                         });
                     } else if (format === 'png') {
                         const img = document.createElement('img');
@@ -622,12 +635,16 @@ func (h *Handler) generateHTML(instanceID string) string {
                         img.style.maxWidth = '100%%';
                         diagramDiv.innerHTML = '';
                         diagramDiv.appendChild(img);
-                        resetTimelinePosition();
+                        if (!highlightState) {
+                            resetTimelinePosition();
+                        }
                     } else {
                         return blob.text().then(text => {
                             diagramDiv.innerHTML = '<pre style="text-align: left; padding: 20px; background: #f5f5f5; border-radius: 4px; overflow-x: auto;">' +
                                 text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
-                            resetTimelinePosition();
+                            if (!highlightState) {
+                                resetTimelinePosition();
+                            }
                         });
                     }
                 })
@@ -828,35 +845,9 @@ func (h *Handler) generateHTML(instanceID string) string {
                     document.getElementById('timeline-time').innerHTML =
                         'Time: <strong>' + new Date(entry.transitioned_at).toLocaleString() + '</strong>';
 
-                    // Highlight the historical state in the diagram
-                    highlightHistoricalState(entry.to_state);
+                    // Re-render diagram with historical state highlighted by server
+                    refreshDiagram(entry.to_state);
                 }
-            });
-        }
-
-        function highlightHistoricalState(stateName) {
-            if (!svgElement) return;
-
-            // Just refresh the diagram to get back all original colors, then highlight the historical state
-            // This is simpler than trying to restore all the different state colors
-            refreshDiagram().then(() => {
-                // After diagram loads, highlight the historical state
-                const allStates = svgElement.querySelectorAll('g.node');
-                allStates.forEach(node => {
-                    const title = node.querySelector('title');
-                    if (!title) return;
-                    const nodeStateName = title.textContent.trim();
-
-                    if (nodeStateName === stateName) {
-                        const polygon = node.querySelector('polygon, ellipse, circle');
-                        if (polygon) {
-                            // Override current state color to show historical state
-                            polygon.setAttribute('fill', 'lightyellow');
-                            polygon.setAttribute('stroke', 'orange');
-                            polygon.setAttribute('stroke-width', '4');
-                        }
-                    }
-                });
             });
         }
 

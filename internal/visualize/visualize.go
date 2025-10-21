@@ -121,9 +121,11 @@ func (g *Generator) GenerateInstance(ctx context.Context, instanceID string, opt
 		return nil, fmt.Errorf("failed to load instance: %w", err)
 	}
 
-	// Set current state
+	// Set current state (only if not already set by query parameter)
 	opts.HighlightCurrent = true
-	opts.CurrentState = instance.CurrentState
+	if opts.CurrentState == "" {
+		opts.CurrentState = instance.CurrentState
+	}
 
 	// Load available transitions if needed
 	if opts.ShowAvailable {
