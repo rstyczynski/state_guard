@@ -580,7 +580,8 @@ func (h *Handler) generateHTML(instanceID string) string {
                 const response = await fetch('/api/v1/assets/' + instanceID + '/history');
                 if (response.ok) {
                     const data = await response.json();
-                    historyData = data.transitions || [];
+                    // Reverse the array since API returns newest-first, but slider expects oldest-first
+                    historyData = (data.transitions || []).reverse();
                     updateTimeline();
                 }
             } catch (error) {
