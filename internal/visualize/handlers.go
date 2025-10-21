@@ -360,6 +360,110 @@ func (h *Handler) generateHTML(instanceID string) string {
             border-radius: 4px;
             border-left: 4px solid #c33;
         }
+        /* State metadata modal */
+        .metadata-panel {
+            position: fixed;
+            right: -400px;
+            top: 0;
+            bottom: 0;
+            width: 400px;
+            background: white;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+            transition: right 0.3s ease;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+        .metadata-panel.open {
+            right: 0;
+        }
+        .metadata-header {
+            background: #667eea;
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .metadata-content {
+            padding: 20px;
+        }
+        .metadata-item {
+            margin-bottom: 15px;
+        }
+        .metadata-label {
+            font-weight: 600;
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .metadata-value {
+            font-size: 14px;
+            color: #333;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+        }
+        /* Pan and zoom controls */
+        .zoom-controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 4px;
+        }
+        .zoom-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: white;
+            cursor: pointer;
+            font-size: 18px;
+            border-radius: 2px;
+            transition: background 0.2s;
+        }
+        .zoom-btn:hover {
+            background: #f0f0f0;
+        }
+        /* Timeline slider */
+        .timeline-container {
+            padding: 15px 30px;
+            background: #fafafa;
+            border-top: 1px solid #e0e0e0;
+            display: none;
+        }
+        .timeline-container.active {
+            display: block;
+        }
+        .timeline-slider {
+            width: 100%%;
+            margin: 10px 0;
+        }
+        .timeline-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #666;
+        }
+        .state-clickable {
+            cursor: pointer;
+        }
+        .state-clickable:hover {
+            opacity: 0.8;
+        }
+        .diagram-wrapper {
+            position: relative;
+        }
     </style>
 </head>
 <body>
@@ -404,17 +508,76 @@ func (h *Handler) generateHTML(instanceID string) string {
         </div>
 
         <div class="diagram-container">
-            <div id="diagram">
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <div>Loading diagram...</div>
+            <div class="diagram-wrapper" id="diagram-wrapper">
+                <div class="zoom-controls" id="zoom-controls" style="display:none;">
+                    <button class="zoom-btn" onclick="zoomIn()" title="Zoom in">+</button>
+                    <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
+                    <button class="zoom-btn" onclick="resetZoom()" title="Reset zoom">⊙</button>
+                </div>
+                <div id="diagram">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div>Loading diagram...</div>
+                    </div>
                 </div>
             </div>
+        </div>
+
+        <div class="timeline-container" id="timeline-container">
+            <div class="timeline-info">
+                <span id="timeline-state">State: <strong>-</strong></span>
+                <span id="timeline-time">Time: <strong>-</strong></span>
+            </div>
+            <input type="range" id="timeline-slider" class="timeline-slider" min="0" max="100" value="0">
+        </div>
+    </div>
+
+    <!-- Metadata panel -->
+    <div class="metadata-panel" id="metadata-panel">
+        <div class="metadata-header">
+            <h2 id="metadata-title">State Information</h2>
+            <button class="close-btn" onclick="closeMetadata()">&times;</button>
+        </div>
+        <div class="metadata-content" id="metadata-content">
+            <p>Click a state to view information</p>
         </div>
     </div>
 
     <script>
         const instanceID = '%s';
+        let currentAsset = null;
+        let historyData = [];
+        let zoomLevel = 1;
+        let svgElement = null;
+
+        // Pan and zoom state
+        let isPanning = false;
+        let startPoint = { x: 0, y: 0 };
+        let panOffset = { x: 0, y: 0 };
+
+        async function loadAssetData() {
+            try {
+                const response = await fetch('/api/v1/assets/' + instanceID);
+                if (response.ok) {
+                    currentAsset = await response.json();
+                }
+            } catch (error) {
+                console.error('Failed to load asset data:', error);
+            }
+        }
+
+        async function loadHistoryData() {
+            try {
+                const response = await fetch('/api/v1/assets/' + instanceID + '/history');
+                if (response.ok) {
+                    const data = await response.json();
+                    historyData = data.transitions || [];
+                    updateTimeline();
+                }
+            } catch (error) {
+                console.error('Failed to load history:', error);
+            }
+        }
 
         function refreshDiagram() {
             const format = document.getElementById('format').value;
@@ -430,7 +593,6 @@ func (h *Handler) generateHTML(instanceID string) string {
             });
 
             const url = '/api/v1/visualize/asset/' + instanceID + '?' + params.toString();
-
             const diagramDiv = document.getElementById('diagram');
             diagramDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading diagram...</div></div>';
 
@@ -445,6 +607,7 @@ func (h *Handler) generateHTML(instanceID string) string {
                     if (format === 'svg') {
                         return blob.text().then(svg => {
                             diagramDiv.innerHTML = svg;
+                            enableInteractivity();
                         });
                     } else if (format === 'png') {
                         const img = document.createElement('img');
@@ -453,7 +616,6 @@ func (h *Handler) generateHTML(instanceID string) string {
                         diagramDiv.innerHTML = '';
                         diagramDiv.appendChild(img);
                     } else {
-                        // For text formats (DOT, Mermaid, JSON)
                         return blob.text().then(text => {
                             diagramDiv.innerHTML = '<pre style="text-align: left; padding: 20px; background: #f5f5f5; border-radius: 4px; overflow-x: auto;">' +
                                 text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
@@ -463,6 +625,185 @@ func (h *Handler) generateHTML(instanceID string) string {
                 .catch(error => {
                     diagramDiv.innerHTML = '<div class="error">Failed to load diagram: ' + error.message + '</div>';
                 });
+        }
+
+        function enableInteractivity() {
+            svgElement = document.querySelector('#diagram svg');
+            if (!svgElement) return;
+
+            // Show zoom controls for SVG
+            document.getElementById('zoom-controls').style.display = 'flex';
+
+            // Enable pan with mouse drag
+            svgElement.addEventListener('mousedown', startPan);
+            svgElement.addEventListener('mousemove', pan);
+            svgElement.addEventListener('mouseup', endPan);
+            svgElement.addEventListener('mouseleave', endPan);
+
+            // Add click handlers to state nodes
+            const stateNodes = svgElement.querySelectorAll('g.node');
+            stateNodes.forEach(node => {
+                const title = node.querySelector('title');
+                if (!title) return;
+
+                const stateName = title.textContent.trim();
+                if (stateName.startsWith('leg_') || stateName === 'ANY_STATE') return;
+
+                // Make state clickable
+                const polygon = node.querySelector('polygon, ellipse, circle');
+                if (polygon) {
+                    polygon.classList.add('state-clickable');
+                    polygon.style.cursor = 'pointer';
+                }
+
+                node.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handleStateClick(stateName);
+                });
+            });
+        }
+
+        async function handleStateClick(stateName) {
+            // Show metadata panel
+            showMetadata(stateName);
+
+            // If state is available for transition, offer to transition to it
+            if (currentAsset && currentAsset.current_state !== stateName) {
+                // Check if this is a valid transition
+                const isAvailable = await checkTransitionAvailability(stateName);
+                if (isAvailable && confirm('Transition to ' + stateName + '?')) {
+                    await transitionToState(stateName);
+                }
+            }
+        }
+
+        async function checkTransitionAvailability(toState) {
+            if (!currentAsset) return false;
+            // Simple check - in real implementation, query the FSM for valid transitions
+            return true;
+        }
+
+        async function transitionToState(toState) {
+            try {
+                const response = await fetch('/api/v1/assets/' + instanceID + '/transition', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ to_state: toState })
+                });
+
+                if (response.ok) {
+                    await loadAssetData();
+                    await loadHistoryData();
+                    refreshDiagram();
+                } else {
+                    alert('Transition failed: ' + response.statusText);
+                }
+            } catch (error) {
+                alert('Transition error: ' + error.message);
+            }
+        }
+
+        function showMetadata(stateName) {
+            const panel = document.getElementById('metadata-panel');
+            const title = document.getElementById('metadata-title');
+            const content = document.getElementById('metadata-content');
+
+            title.textContent = 'State: ' + stateName;
+
+            let html = '<div class="metadata-item">';
+            html += '<div class="metadata-label">State Name</div>';
+            html += '<div class="metadata-value">' + stateName + '</div>';
+            html += '</div>';
+
+            if (currentAsset) {
+                html += '<div class="metadata-item">';
+                html += '<div class="metadata-label">Current State</div>';
+                html += '<div class="metadata-value">' + (currentAsset.current_state === stateName ? 'Yes' : 'No') + '</div>';
+                html += '</div>';
+
+                html += '<div class="metadata-item">';
+                html += '<div class="metadata-label">Asset ID</div>';
+                html += '<div class="metadata-value">' + currentAsset.id + '</div>';
+                html += '</div>';
+
+                html += '<div class="metadata-item">';
+                html += '<div class="metadata-label">Asset Type</div>';
+                html += '<div class="metadata-value">' + currentAsset.asset_type + '</div>';
+                html += '</div>';
+            }
+
+            content.innerHTML = html;
+            panel.classList.add('open');
+        }
+
+        function closeMetadata() {
+            document.getElementById('metadata-panel').classList.remove('open');
+        }
+
+        // Pan and zoom functions
+        function zoomIn() {
+            zoomLevel *= 1.2;
+            applyZoom();
+        }
+
+        function zoomOut() {
+            zoomLevel /= 1.2;
+            applyZoom();
+        }
+
+        function resetZoom() {
+            zoomLevel = 1;
+            panOffset = { x: 0, y: 0 };
+            applyZoom();
+        }
+
+        function applyZoom() {
+            if (!svgElement) return;
+            svgElement.style.transform = 'scale(' + zoomLevel + ') translate(' + panOffset.x + 'px, ' + panOffset.y + 'px)';
+        }
+
+        function startPan(e) {
+            if (e.target.classList.contains('state-clickable')) return;
+            isPanning = true;
+            startPoint = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+        }
+
+        function pan(e) {
+            if (!isPanning) return;
+            e.preventDefault();
+            panOffset = {
+                x: e.clientX - startPoint.x,
+                y: e.clientY - startPoint.y
+            };
+            applyZoom();
+        }
+
+        function endPan() {
+            isPanning = false;
+        }
+
+        // Timeline functions
+        function updateTimeline() {
+            if (!historyData || historyData.length === 0) {
+                document.getElementById('timeline-container').classList.remove('active');
+                return;
+            }
+
+            document.getElementById('timeline-container').classList.add('active');
+            const slider = document.getElementById('timeline-slider');
+            slider.max = historyData.length - 1;
+            slider.value = historyData.length - 1;
+
+            slider.addEventListener('input', (e) => {
+                const index = parseInt(e.target.value);
+                if (historyData[index]) {
+                    const entry = historyData[index];
+                    document.getElementById('timeline-state').innerHTML =
+                        'State: <strong>' + entry.to_state + '</strong>';
+                    document.getElementById('timeline-time').innerHTML =
+                        'Time: <strong>' + new Date(entry.transitioned_at).toLocaleString() + '</strong>';
+                }
+            });
         }
 
         function downloadDiagram() {
@@ -479,7 +820,6 @@ func (h *Handler) generateHTML(instanceID string) string {
             });
 
             const url = '/api/v1/visualize/asset/' + instanceID + '?' + params.toString();
-
             const a = document.createElement('a');
             a.href = url;
             a.download = 'fsm-diagram-' + instanceID + '.' + format;
@@ -491,11 +831,17 @@ func (h *Handler) generateHTML(instanceID string) string {
         // Auto-refresh on control change
         document.getElementById('format').addEventListener('change', refreshDiagram);
         document.getElementById('layout').addEventListener('change', refreshDiagram);
-        document.getElementById('history').addEventListener('change', refreshDiagram);
+        document.getElementById('history').addEventListener('change', () => {
+            refreshDiagram();
+            loadHistoryData();
+        });
         document.getElementById('available').addEventListener('change', refreshDiagram);
 
         // Initial load
-        refreshDiagram();
+        loadAssetData().then(() => {
+            loadHistoryData();
+            refreshDiagram();
+        });
     </script>
 </body>
 </html>`, instanceID, instanceID, instanceID)
