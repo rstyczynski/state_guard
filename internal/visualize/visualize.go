@@ -237,22 +237,18 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 
 		// Styling based on state type
 		isInitial := state == g.definition.Initial
-		isFinal := g.isFinalState(state)
 		isCurrent := opts.HighlightCurrent && state == opts.CurrentState
 		isAvailable := opts.ShowAvailable && availableMap[state]
 
-		// Set shape: rectangles for all states except final (double circles)
-		if isFinal {
-			node.SetShape(cgraph.DoubleCircleShape)
-		} else {
+		// Set shape: ONLY initial state is rectangle, all others are circles
+		if isInitial {
 			node.SetShape(cgraph.BoxShape)
-		}
-
-		// Set fixed size for rectangles
-		if !isFinal {
 			node.SetWidth(1.5)
 			node.SetHeight(0.6)
 			node.SetFixedSize(true)
+		} else {
+			// All other states (including final) are simple circles
+			node.SetShape(cgraph.CircleShape)
 		}
 
 		// Set colors
@@ -356,18 +352,39 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 
 // addLegend adds a legend to the graph explaining colors and shapes
 func (g *Generator) addLegend(graph *cgraph.Graph, opts Options) error {
-	// Add a graph label with legend information
-	legendText := "Legend: " +
-		"[Initial=Blue] " +
-		"[Current=Green] " +
-		"[Available=Yellow] " +
-		"[Error=Red] " +
-		"[Final=DoubleCircle] " +
-		"[Normal=White]"
+	// Create a subgraph cluster for the legend
+	legend, err := graph.CreateSubGraphByName("cluster_legend")
+	if err != nil {
+		return err
+	}
+	legend.SetLabel("Legend")
 
-	graph.SetLabel(legendText)
-	graph.SetLabelLocation(cgraph.BottomLocation)
-	graph.SetLabelJust(cgraph.LeftJust)
+	// Create visual legend items as colored rectangles
+	legendItems := []struct {
+		name  string
+		label string
+		color string
+	}{
+		{"leg_initial", "Initial", "lightblue"},
+		{"leg_current", "Current", "lightgreen"},
+		{"leg_available", "Available", "lightyellow"},
+		{"leg_error", "Error", "lightcoral"},
+		{"leg_normal", "Normal", "white"},
+	}
+
+	for _, item := range legendItems {
+		node, err := legend.CreateNodeByName(item.name)
+		if err != nil {
+			continue
+		}
+		node.SetLabel(item.label)
+		node.SetShape(cgraph.BoxShape)
+		node.SetFillColor(item.color)
+		node.SetStyle(cgraph.FilledNodeStyle)
+		node.SetWidth(1.0)
+		node.SetHeight(0.5)
+		node.SetFixedSize(true)
+	}
 
 	return nil
 }
@@ -603,13 +620,13 @@ func ParseFormat(s string) (Format, error) {
 func ParseLayout(s string) (Layout, error) {
 	s = strings.ToLower(s)
 	switch s {
-	case "hierarchical", "dot", "":
+	case "hierarchical", "dot":
 		return LayoutHierarchical, nil
 	case "circular", "circo":
 		return LayoutCircular, nil
 	case "vertical", "tb":
 		return LayoutVertical, nil
-	case "horizontal", "lr":
+	case "horizontal", "lr", "": // Default is horizontal
 		return LayoutHorizontal, nil
 	default:
 		return "", fmt.Errorf("unsupported layout: %s (supported: hierarchical, circular, vertical, horizontal)", s)

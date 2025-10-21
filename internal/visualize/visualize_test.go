@@ -49,7 +49,7 @@ func TestParseLayout(t *testing.T) {
 	}{
 		{"hierarchical", "hierarchical", LayoutHierarchical, false},
 		{"dot alias", "dot", LayoutHierarchical, false},
-		{"empty defaults to hierarchical", "", LayoutHierarchical, false},
+		{"empty defaults to horizontal", "", LayoutHorizontal, false},
 		{"circular", "circular", LayoutCircular, false},
 		{"circo alias", "circo", LayoutCircular, false},
 		{"vertical", "vertical", LayoutVertical, false},

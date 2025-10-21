@@ -193,9 +193,7 @@ func (h *Handler) parseOptions(r *http.Request) (Format, Layout, Options, error)
 
 	// Parse layout
 	layoutStr := r.URL.Query().Get("layout")
-	if layoutStr == "" {
-		layoutStr = "hierarchical"
-	}
+	// If not specified, ParseLayout will default to horizontal
 	layout, err := ParseLayout(layoutStr)
 	if err != nil {
 		return "", "", opts, err
