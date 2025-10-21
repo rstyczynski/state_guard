@@ -192,11 +192,12 @@ GET    /api/v1/definitions      - List available FSM definitions
   - JSON - Structured graph data for custom rendering
 
 - **Rich Visual Elements:**
-  - States: Circles (regular), double circles (final), bold outline (initial)
+  - States: rectangles, double circles (final), bold outline (initial), all rectangles the same size
   - Color-coding: Current state vs available states, distinct styling for error states
   - Transitions: Solid arrows (direct), dashed arrows (recovery), no bidirectional arrows
   - Wildcard transitions: represent as ANY STATE → FAILED. No arrows from real states
   - Layout algorithms: Hierarchical, circular, vertical, horizontal, no force-directed
+  - Add legend describing colors
 
 - **Instance-Specific Visualizations:**
   - Highlight current state of specific asset instance

@@ -241,11 +241,18 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 		isCurrent := opts.HighlightCurrent && state == opts.CurrentState
 		isAvailable := opts.ShowAvailable && availableMap[state]
 
-		// Set shape
+		// Set shape: rectangles for all states except final (double circles)
 		if isFinal {
 			node.SetShape(cgraph.DoubleCircleShape)
 		} else {
-			node.SetShape(cgraph.CircleShape)
+			node.SetShape(cgraph.BoxShape)
+		}
+
+		// Set fixed size for rectangles
+		if !isFinal {
+			node.SetWidth(1.5)
+			node.SetHeight(0.6)
+			node.SetFixedSize(true)
 		}
 
 		// Set colors
@@ -258,6 +265,11 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 			node.SetStyle(cgraph.FilledNodeStyle)
 		} else if isInitial {
 			node.SetPenWidth(2.0)
+			node.SetStyle(cgraph.FilledNodeStyle)
+			node.SetFillColor("lightblue")
+		} else {
+			node.SetFillColor("white")
+			node.SetStyle(cgraph.FilledNodeStyle)
 		}
 
 		// Special styling for error states
@@ -336,7 +348,28 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 		createdEdges[edgeKey] = true
 	}
 
+	// Add legend
+	g.addLegend(graph, opts)
+
 	return graph, nil
+}
+
+// addLegend adds a legend to the graph explaining colors and shapes
+func (g *Generator) addLegend(graph *cgraph.Graph, opts Options) error {
+	// Add a graph label with legend information
+	legendText := "Legend: " +
+		"[Initial=Blue] " +
+		"[Current=Green] " +
+		"[Available=Yellow] " +
+		"[Error=Red] " +
+		"[Final=DoubleCircle] " +
+		"[Normal=White]"
+
+	graph.SetLabel(legendText)
+	graph.SetLabelLocation(cgraph.BottomLocation)
+	graph.SetLabelJust(cgraph.LeftJust)
+
+	return nil
 }
 
 // isRecoveryTransition checks if a transition is a recovery/backward transition
