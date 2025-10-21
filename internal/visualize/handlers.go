@@ -592,14 +592,17 @@ func (h *Handler) generateHTML(instanceID string) string {
                 format: format,
                 layout: layout,
                 history: history.toString(),
-                available: available.toString()
+                available: available.toString(),
+                _t: new Date().getTime() // Cache-busting timestamp
             });
 
             const url = '/api/v1/visualize/asset/' + instanceID + '?' + params.toString();
             const diagramDiv = document.getElementById('diagram');
             diagramDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading diagram...</div></div>';
 
-            fetch(url)
+            fetch(url, {
+                cache: 'no-store' // Force no caching on fetch
+            })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('HTTP ' + response.status + ': ' + response.statusText);
@@ -797,7 +800,11 @@ func (h *Handler) generateHTML(instanceID string) string {
             slider.max = historyData.length - 1;
             slider.value = historyData.length - 1;
 
-            slider.addEventListener('input', (e) => {
+            // Remove old listener by cloning
+            const newSlider = slider.cloneNode(true);
+            slider.parentNode.replaceChild(newSlider, slider);
+
+            newSlider.addEventListener('input', (e) => {
                 const index = parseInt(e.target.value);
                 if (historyData[index]) {
                     const entry = historyData[index];
@@ -805,6 +812,46 @@ func (h *Handler) generateHTML(instanceID string) string {
                         'State: <strong>' + entry.to_state + '</strong>';
                     document.getElementById('timeline-time').innerHTML =
                         'Time: <strong>' + new Date(entry.transitioned_at).toLocaleString() + '</strong>';
+
+                    // Highlight the historical state in the diagram
+                    highlightHistoricalState(entry.to_state);
+                }
+            });
+        }
+
+        function highlightHistoricalState(stateName) {
+            if (!svgElement) return;
+
+            // Reset all states to their normal styling
+            const allStates = svgElement.querySelectorAll('g.node');
+            allStates.forEach(node => {
+                const polygon = node.querySelector('polygon, ellipse, circle');
+                if (polygon) {
+                    const title = node.querySelector('title');
+                    if (!title) return;
+                    const nodeStateName = title.textContent.trim();
+
+                    // Skip special nodes
+                    if (nodeStateName.startsWith('leg_') || nodeStateName === 'ANY_STATE') return;
+
+                    // Reset to normal color
+                    polygon.setAttribute('fill', 'white');
+                    polygon.setAttribute('stroke-width', '1');
+                }
+            });
+
+            // Highlight the selected historical state
+            allStates.forEach(node => {
+                const title = node.querySelector('title');
+                if (!title) return;
+                const nodeStateName = title.textContent.trim();
+
+                if (nodeStateName === stateName) {
+                    const polygon = node.querySelector('polygon, ellipse, circle');
+                    if (polygon) {
+                        polygon.setAttribute('fill', 'lightyellow');
+                        polygon.setAttribute('stroke-width', '3');
+                    }
                 }
             });
         }
@@ -819,7 +866,8 @@ func (h *Handler) generateHTML(instanceID string) string {
                 format: format,
                 layout: layout,
                 history: history.toString(),
-                available: available.toString()
+                available: available.toString(),
+                _t: new Date().getTime() // Cache-busting
             });
 
             const url = '/api/v1/visualize/asset/' + instanceID + '?' + params.toString();
