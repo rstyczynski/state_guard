@@ -180,7 +180,7 @@ GET    /api/v1/definitions      - List available FSM definitions
 - ✓ Connection pooling and retry logic
 
 ### Phase 2.4: State Diagram Visualization
-**Status:** Planned
+**Status:** In progress
 **Dependencies:** Phase 2.2 (REST API), Phase 2.1 (History)
 
 **Features:**
@@ -189,6 +189,7 @@ GET    /api/v1/definitions      - List available FSM definitions
   - PNG - Raster image for reports/documentation
   - DOT - GraphViz source format for advanced customization
   - Mermaid - Markdown-compatible diagrams for documentation
+  - PlantUML - a highly versatile tool that facilitates the rapid and straightforward creation of a wide array of diagrams.
   - JSON - Structured graph data for custom rendering
 
 - **Rich Visual Elements:**
@@ -199,7 +200,8 @@ GET    /api/v1/definitions      - List available FSM definitions
   - Wildcard transitions: represent as ANY STATE → FAILED. No arrows from real states
   - Layout algorithms: horizontal (default), vertical, no other types
 
-  - **Legend:**
+- **Legend:**
+**Status:** POSTPONED
   - Add legend describing diagram colors.
   - Keep legend at bottom of the diagram - centered. It's critical!
   - Legend layout is horizontal.
@@ -216,9 +218,10 @@ GET    /api/v1/definitions      - List available FSM definitions
 
 - **Interactive Features (HTML Wrapper):**
   - Click states to see metadata
-  - Hover tooltips showing transition rules
+  - Click next state to change the current state graphically
+  - Hover tooltips showing transition rules (POSTPONED)
   - Pan and zoom controls
-  - Toggle views: definition-only vs instance-specific
+  - Toggle views: definition-only vs instance-specific (POSTPONED)
   - Export buttons for different formats
   - Timeline slider for historical state visualization
 
