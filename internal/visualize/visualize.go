@@ -351,26 +351,29 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 // addLegend adds a legend to the graph explaining colors and shapes
 func (g *Generator) addLegend(graph *cgraph.Graph, opts Options) error {
 	// Create a subgraph cluster for the legend
-	// GraphViz will position it automatically (typically at the bottom/side)
+	// Positioned at bottom center with horizontal layout
 	legend, err := graph.CreateSubGraphByName("cluster_legend")
 	if err != nil {
 		return err
 	}
 	legend.SetLabel("Legend")
+	legend.SetRankDir(cgraph.LRRank) // Horizontal layout for legend
 
 	// Create visual legend items as colored rectangles
+	// Rectangles are 50% size of diagram rectangles (diagram: 1.5x0.6, legend: 0.75x0.3)
+	// Text is 50% size (fontsize 7 instead of default 14)
 	legendItems := []struct {
 		name      string
 		label     string
 		color     string
 		penWidth  float64
 	}{
-		{"leg_initial", "Initial (bold)", "lightblue", 2.0},
-		{"leg_final", "Final (double)", "white", 4.0},
-		{"leg_current", "Current", "lightgreen", 3.0},
-		{"leg_available", "Available", "lightyellow", 1.0},
-		{"leg_error", "Error", "lightcoral", 1.0},
-		{"leg_normal", "Normal", "white", 1.0},
+		{"leg_initial", "Initial (bold)", "lightblue", 1.0},  // 50% of 2.0
+		{"leg_final", "Final (double)", "white", 2.0},        // 50% of 4.0
+		{"leg_current", "Current", "lightgreen", 1.5},        // 50% of 3.0
+		{"leg_available", "Available", "lightyellow", 0.5},   // 50% of 1.0
+		{"leg_error", "Error", "lightcoral", 0.5},            // 50% of 1.0
+		{"leg_normal", "Normal", "white", 0.5},               // 50% of 1.0
 	}
 
 	for _, item := range legendItems {
@@ -383,9 +386,12 @@ func (g *Generator) addLegend(graph *cgraph.Graph, opts Options) error {
 		node.SetFillColor(item.color)
 		node.SetStyle(cgraph.FilledNodeStyle)
 		node.SetPenWidth(item.penWidth)
-		node.SetWidth(1.0)
-		node.SetHeight(0.5)
+		// 50% size of diagram rectangles: 0.75 x 0.3 (diagram is 1.5 x 0.6)
+		node.SetWidth(0.75)
+		node.SetHeight(0.3)
 		node.SetFixedSize(true)
+		// 50% text size: fontsize 7 (default is 14)
+		node.SetFontSize(7.0)
 	}
 
 	return nil

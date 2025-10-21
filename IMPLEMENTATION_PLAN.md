@@ -197,7 +197,14 @@ GET    /api/v1/definitions      - List available FSM definitions
   - Transitions: Solid arrows (direct), dashed arrows (recovery), no bidirectional arrows
   - Wildcard transitions: represent as ANY STATE → FAILED. No arrows from real states
   - Layout algorithms: horizontal (default), vertical, no other types
-  - Add legend describing colors. use rectangles in the legend. Keep legend at bottom of the diagram.
+
+  - **Legend:**
+  - Add legend describing diagram colors.
+  - Legend uses rectangles in the legend. 
+  - Legend rectangles are 50% size of diagram's ones. 
+  - Add text under each rectangle. Text is 50% of the one from diagrams. Text is wrapped 
+  - Keep legend at bottom of the diagram - centered.
+  - Legend layout os horizontal.
 
 - **Instance-Specific Visualizations:**
   - Highlight current state of specific asset instance
