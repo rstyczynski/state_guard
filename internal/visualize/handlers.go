@@ -600,7 +600,7 @@ func (h *Handler) generateHTML(instanceID string) string {
             const diagramDiv = document.getElementById('diagram');
             diagramDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading diagram...</div></div>';
 
-            fetch(url, {
+            return fetch(url, {
                 cache: 'no-store' // Force no caching on fetch
             })
                 .then(response => {
@@ -614,6 +614,7 @@ func (h *Handler) generateHTML(instanceID string) string {
                         return blob.text().then(svg => {
                             diagramDiv.innerHTML = svg;
                             enableInteractivity();
+                            resetTimelinePosition();
                         });
                     } else if (format === 'png') {
                         const img = document.createElement('img');
@@ -621,16 +622,30 @@ func (h *Handler) generateHTML(instanceID string) string {
                         img.style.maxWidth = '100%%';
                         diagramDiv.innerHTML = '';
                         diagramDiv.appendChild(img);
+                        resetTimelinePosition();
                     } else {
                         return blob.text().then(text => {
                             diagramDiv.innerHTML = '<pre style="text-align: left; padding: 20px; background: #f5f5f5; border-radius: 4px; overflow-x: auto;">' +
                                 text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
+                            resetTimelinePosition();
                         });
                     }
                 })
                 .catch(error => {
                     diagramDiv.innerHTML = '<div class="error">Failed to load diagram: ' + error.message + '</div>';
                 });
+        }
+
+        function resetTimelinePosition() {
+            const slider = document.getElementById('timeline-slider');
+            if (slider && historyData && historyData.length > 0) {
+                slider.value = historyData.length - 1;
+                const entry = historyData[historyData.length - 1];
+                document.getElementById('timeline-state').innerHTML =
+                    'State: <strong>' + entry.to_state + '</strong>';
+                document.getElementById('timeline-time').innerHTML =
+                    'Time: <strong>' + new Date(entry.transitioned_at).toLocaleString() + '</strong>';
+            }
         }
 
         function enableInteractivity() {
@@ -822,37 +837,26 @@ func (h *Handler) generateHTML(instanceID string) string {
         function highlightHistoricalState(stateName) {
             if (!svgElement) return;
 
-            // Reset all states to their normal styling
-            const allStates = svgElement.querySelectorAll('g.node');
-            allStates.forEach(node => {
-                const polygon = node.querySelector('polygon, ellipse, circle');
-                if (polygon) {
+            // Just refresh the diagram to get back all original colors, then highlight the historical state
+            // This is simpler than trying to restore all the different state colors
+            refreshDiagram().then(() => {
+                // After diagram loads, highlight the historical state
+                const allStates = svgElement.querySelectorAll('g.node');
+                allStates.forEach(node => {
                     const title = node.querySelector('title');
                     if (!title) return;
                     const nodeStateName = title.textContent.trim();
 
-                    // Skip special nodes
-                    if (nodeStateName.startsWith('leg_') || nodeStateName === 'ANY_STATE') return;
-
-                    // Reset to normal color
-                    polygon.setAttribute('fill', 'white');
-                    polygon.setAttribute('stroke-width', '1');
-                }
-            });
-
-            // Highlight the selected historical state
-            allStates.forEach(node => {
-                const title = node.querySelector('title');
-                if (!title) return;
-                const nodeStateName = title.textContent.trim();
-
-                if (nodeStateName === stateName) {
-                    const polygon = node.querySelector('polygon, ellipse, circle');
-                    if (polygon) {
-                        polygon.setAttribute('fill', 'lightyellow');
-                        polygon.setAttribute('stroke-width', '3');
+                    if (nodeStateName === stateName) {
+                        const polygon = node.querySelector('polygon, ellipse, circle');
+                        if (polygon) {
+                            // Override current state color to show historical state
+                            polygon.setAttribute('fill', 'lightyellow');
+                            polygon.setAttribute('stroke', 'orange');
+                            polygon.setAttribute('stroke-width', '4');
+                        }
                     }
-                }
+                });
             });
         }
 
