@@ -10,12 +10,17 @@ info:
     - Track state transition history
     - Webhook notifications on state changes
     - Persistent storage with SQLite
+    - **NEW:** State diagram visualization (SVG, PNG, DOT, Mermaid, JSON)
 
     ## Asset Types
     Asset Types define the FSM definition and webhook configuration. Each asset instance
     is created from an Asset Type and maintains its own independent state.
 
-  version: 2.2.0
+    ## Visualization
+    Generate interactive state diagrams in multiple formats with current state highlighting,
+    available transitions, and history overlays. Access the interactive viewer at `/docs/diagram/{instanceID}`.
+
+  version: 2.4.0
   contact:
     name: FSM API Support
   license:
@@ -28,6 +33,8 @@ servers:
 tags:
   - name: assets
     description: Asset instance management
+  - name: visualize
+    description: FSM state diagram visualization
   - name: health
     description: Health and status checks
 
@@ -274,6 +281,206 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /visualize/definition/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        description: Asset type name or path
+        schema:
+          type: string
+          example: "simple_asset_type.yaml"
+      - name: format
+        in: query
+        required: false
+        description: Output format
+        schema:
+          type: string
+          enum: [svg, png, dot, mermaid, json]
+          default: svg
+      - name: layout
+        in: query
+        required: false
+        description: Layout algorithm
+        schema:
+          type: string
+          enum: [hierarchical, circular, force]
+          default: hierarchical
+      - name: scheme
+        in: query
+        required: false
+        description: Color scheme
+        schema:
+          type: string
+          enum: [light, dark]
+          default: light
+    get:
+      tags:
+        - visualize
+      summary: Visualize FSM definition
+      description: Generate a state diagram for an FSM definition (no instance data)
+      operationId: visualizeDefinition
+      responses:
+        '200':
+          description: Diagram generated successfully
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            text/vnd.graphviz:
+              schema:
+                type: string
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Definition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /visualize/asset/{instanceID}:
+    parameters:
+      - name: instanceID
+        in: path
+        required: true
+        description: Asset instance identifier
+        schema:
+          type: string
+          example: "web-server-1"
+      - name: format
+        in: query
+        required: false
+        description: Output format
+        schema:
+          type: string
+          enum: [svg, png, dot, mermaid, json]
+          default: svg
+      - name: layout
+        in: query
+        required: false
+        description: Layout algorithm
+        schema:
+          type: string
+          enum: [hierarchical, circular, force]
+          default: hierarchical
+      - name: available
+        in: query
+        required: false
+        description: Highlight available transitions
+        schema:
+          type: boolean
+          default: true
+      - name: history
+        in: query
+        required: false
+        description: Show transition history overlay
+        schema:
+          type: boolean
+          default: false
+      - name: scheme
+        in: query
+        required: false
+        description: Color scheme
+        schema:
+          type: string
+          enum: [light, dark]
+          default: light
+    get:
+      tags:
+        - visualize
+      summary: Visualize asset instance
+      description: |
+        Generate a state diagram for a specific asset instance with current state highlighted.
+        Optionally show available transitions and history overlay.
+      operationId: visualizeAsset
+      responses:
+        '200':
+          description: Diagram generated successfully
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            text/vnd.graphviz:
+              schema:
+                type: string
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /visualize/asset/{instanceID}/history:
+    parameters:
+      - name: instanceID
+        in: path
+        required: true
+        description: Asset instance identifier
+        schema:
+          type: string
+          example: "web-server-1"
+      - name: format
+        in: query
+        required: false
+        description: Output format
+        schema:
+          type: string
+          enum: [svg, png, dot, mermaid, json]
+          default: svg
+      - name: layout
+        in: query
+        required: false
+        description: Layout algorithm
+        schema:
+          type: string
+          enum: [hierarchical, circular, force]
+          default: hierarchical
+    get:
+      tags:
+        - visualize
+      summary: Visualize instance history
+      description: Generate a state diagram with transition history path highlighted
+      operationId: visualizeHistory
+      responses:
+        '200':
+          description: Diagram generated successfully
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Instance not found
           content:
             application/json:
               schema:

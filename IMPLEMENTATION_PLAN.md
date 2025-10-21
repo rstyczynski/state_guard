@@ -179,6 +179,110 @@ GET    /api/v1/definitions      - List available FSM definitions
 - ✓ Configurable backend (SQLite for dev, PostgreSQL for prod)
 - ✓ Connection pooling and retry logic
 
+### Phase 2.4: State Diagram Visualization
+**Status:** Planned
+**Dependencies:** Phase 2.2 (REST API), Phase 2.1 (History)
+
+**Features:**
+- **Multiple Visualization Formats:**
+  - SVG - Scalable vector graphics (lightweight, embeddable, interactive)
+  - PNG - Raster image for reports/documentation
+  - DOT - GraphViz source format for advanced customization
+  - Mermaid - Markdown-compatible diagrams for documentation
+  - JSON - Structured graph data for custom rendering
+
+- **Rich Visual Elements:**
+  - States: Circles (regular), double circles (final), bold outline (initial)
+  - Color-coding: Current state vs available states, distinct styling for error states
+  - Transitions: Solid arrows (direct), dashed arrows (recovery), bidirectional arrows
+  - Wildcard transitions: Bold red arrows (→ FAILED)
+  - Layout algorithms: Hierarchical, circular, force-directed
+
+- **Instance-Specific Visualizations:**
+  - Highlight current state of specific asset instance
+  - Show transition history path (breadcrumb trail)
+  - Display available next states from current position
+  - Highlight "hot paths" (most frequently used transitions)
+
+- **Interactive Features (HTML Wrapper):**
+  - Click states to see metadata
+  - Hover tooltips showing transition rules
+  - Pan and zoom controls
+  - Toggle views: definition-only vs instance-specific
+  - Export buttons for different formats
+  - Timeline slider for historical state visualization
+
+**API Endpoints:**
+```
+GET /api/v1/visualize/definition/:name
+  - Visualizes FSM definition (no instance data)
+  - Query params: format=[svg|png|dot|mermaid|json], layout=[hierarchical|circular|force]
+
+GET /api/v1/visualize/asset/:instanceID
+  - Visualizes FSM with current instance state highlighted
+  - Query params: format, layout, history=[true|false], available=[true|false]
+
+GET /api/v1/visualize/asset/:instanceID/history
+  - Animated visualization showing state progression over time
+  - Query params: format, from=[timestamp], to=[timestamp]
+
+GET /api/v1/visualize/asset-type/:assetType
+  - Visualizes all instances of an asset type
+  - Shows aggregate statistics and patterns
+
+GET /docs/diagram/:instanceID
+  - Interactive HTML page with embedded SVG
+  - Real-time updates via WebSocket (optional)
+```
+
+**Acceptance Criteria:**
+
+**Core Features:**
+- ✓ API endpoint returns state visualization in multiple formats (SVG, PNG, DOT, Mermaid, JSON)
+- ✓ States represented as circles with appropriate styling
+- ✓ Transitions represented as arrows with appropriate styling (solid/dashed/bidirectional)
+- ✓ Initial state marked with bold outline
+- ✓ Final states marked with double circles
+- ✓ Wildcard transitions visually distinct (bold red arrows)
+- ✓ Current state highlighted for instance-specific visualizations
+- ✓ Multiple layout algorithms supported (hierarchical, circular, force-directed)
+- ✓ HTML wrapper page for interactive testing with URL parameters
+- ✓ Available transitions highlighted when viewing specific instance
+
+**Advanced Features:**
+- ✓ Transition history overlay showing path taken by instance
+- ✓ Export functionality in HTML wrapper (download SVG/PNG/DOT)
+- ✓ Interactive tooltips showing state/transition metadata
+- ✓ Pan and zoom controls for large diagrams
+- ✓ Comparison view for multiple instances
+- ✓ Aggregate visualization for asset types
+
+**Technical Requirements:**
+- ✓ Efficient rendering for FSMs with >50 states
+- ✓ Caching layer for frequently requested diagrams
+- ✓ Configurable color schemes and styling
+- ✓ Mobile-responsive HTML viewer
+- ✓ Proper HTTP headers for image formats (Content-Type, caching)
+- ✓ Error handling for invalid instances/definitions
+
+**Testing:**
+- ✓ Unit tests for diagram generation logic (>80% coverage)
+- ✓ Integration tests for API endpoints
+- ✓ Visual regression tests for diagram rendering
+- ✓ Performance tests for large FSMs (100+ states)
+
+**Documentation:**
+- ✓ OpenAPI/Swagger specs for visualization endpoints
+- ✓ Example diagrams in documentation
+- ✓ Embedding guide (how to use in external apps)
+
+**Implementation Stack:**
+- GraphViz for graph layout (`golang-graphviz/graphviz`)
+- Native Go SVG generation
+- Go `html/template` for HTML wrapper
+- D3.js or Cytoscape.js for interactive features
+
+
 ---
 
 ## Phase 3: Security & Authentication

@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/render"
 	"github.com/rstyczynski/fsm_v2/internal/fsm"
 	"github.com/rstyczynski/fsm_v2/internal/storage"
+	"github.com/rstyczynski/fsm_v2/internal/visualize"
 	"github.com/rstyczynski/fsm_v2/internal/webhook"
 )
 
@@ -62,6 +63,9 @@ func (s *Server) Start(addr string) error {
 		// API documentation page
 		r.Get("/docs", s.handleAPIDocs)
 		r.Get("/", s.handleAPIDocs) // Root redirects to docs
+
+		// Interactive diagram viewer
+		r.Get("/docs/diagram/{instanceID}", s.handleDiagramPage)
 	})
 
 	// API routes
@@ -80,6 +84,16 @@ func (s *Server) Start(addr string) error {
 				r.Post("/transition", s.handleTransition)
 				r.Get("/history", s.handleHistory)
 			})
+		})
+
+		// Visualization routes
+		r.Route("/visualize", func(r chi.Router) {
+			// Definition visualization
+			r.Get("/definition/{name}", s.handleVisualizeDefinition)
+
+			// Instance visualization
+			r.Get("/asset/{instanceID}", s.handleVisualizeAsset)
+			r.Get("/asset/{instanceID}/history", s.handleVisualizeHistory)
 		})
 	})
 
@@ -241,4 +255,28 @@ func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(html))
+}
+
+// handleVisualizeAsset delegates to visualization handler
+func (s *Server) handleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
+	handler := visualize.NewHandler(s.storage, s.assetDir)
+	handler.HandleVisualizeAsset(w, r)
+}
+
+// handleVisualizeDefinition delegates to visualization handler
+func (s *Server) handleVisualizeDefinition(w http.ResponseWriter, r *http.Request) {
+	handler := visualize.NewHandler(s.storage, s.assetDir)
+	handler.HandleVisualizeDefinition(w, r)
+}
+
+// handleVisualizeHistory delegates to visualization handler
+func (s *Server) handleVisualizeHistory(w http.ResponseWriter, r *http.Request) {
+	handler := visualize.NewHandler(s.storage, s.assetDir)
+	handler.HandleVisualizeHistory(w, r)
+}
+
+// handleDiagramPage delegates to visualization handler
+func (s *Server) handleDiagramPage(w http.ResponseWriter, r *http.Request) {
+	handler := visualize.NewHandler(s.storage, s.assetDir)
+	handler.HandleDiagramPage(w, r)
 }
