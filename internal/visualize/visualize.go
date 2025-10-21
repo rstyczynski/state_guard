@@ -192,22 +192,17 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 	var layoutEngine string
 	var rankDir cgraph.RankDir
 
+	// Only horizontal (default) and vertical layouts are supported
 	switch opts.Layout {
-	case LayoutHierarchical:
-		layoutEngine = "dot"
-		rankDir = cgraph.TBRank // Top to bottom
 	case LayoutVertical:
 		layoutEngine = "dot"
 		rankDir = cgraph.TBRank // Top to bottom (vertical)
 	case LayoutHorizontal:
 		layoutEngine = "dot"
-		rankDir = cgraph.LRRank // Left to right (horizontal)
-	case LayoutCircular:
-		layoutEngine = "circo"
-		rankDir = cgraph.TBRank // Default for circo
+		rankDir = cgraph.LRRank // Left to right (horizontal - default)
 	default:
 		layoutEngine = "dot"
-		rankDir = cgraph.TBRank
+		rankDir = cgraph.LRRank // Default to horizontal
 	}
 
 	graph, err := gv.Graph()
@@ -237,19 +232,15 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 
 		// Styling based on state type
 		isInitial := state == g.definition.Initial
+		isFinal := g.isFinalState(state)
 		isCurrent := opts.HighlightCurrent && state == opts.CurrentState
 		isAvailable := opts.ShowAvailable && availableMap[state]
 
-		// Set shape: ONLY initial state is rectangle, all others are circles
-		if isInitial {
-			node.SetShape(cgraph.BoxShape)
-			node.SetWidth(1.5)
-			node.SetHeight(0.6)
-			node.SetFixedSize(true)
-		} else {
-			// All other states (including final) are simple circles
-			node.SetShape(cgraph.CircleShape)
-		}
+		// ALL states are rectangles with the same size
+		node.SetShape(cgraph.BoxShape)
+		node.SetWidth(1.5)
+		node.SetHeight(0.6)
+		node.SetFixedSize(true)
 
 		// Set colors
 		if isCurrent {
@@ -260,11 +251,18 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 			node.SetFillColor("lightyellow")
 			node.SetStyle(cgraph.FilledNodeStyle)
 		} else if isInitial {
+			// Bold outline for initial state
 			node.SetPenWidth(2.0)
 			node.SetStyle(cgraph.FilledNodeStyle)
 			node.SetFillColor("lightblue")
 		} else {
 			node.SetFillColor("white")
+			node.SetStyle(cgraph.FilledNodeStyle)
+		}
+
+		// Double outline for final states
+		if isFinal && !isCurrent {
+			node.SetPenWidth(4.0)
 			node.SetStyle(cgraph.FilledNodeStyle)
 		}
 
@@ -353,6 +351,7 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 // addLegend adds a legend to the graph explaining colors and shapes
 func (g *Generator) addLegend(graph *cgraph.Graph, opts Options) error {
 	// Create a subgraph cluster for the legend
+	// GraphViz will position it automatically (typically at the bottom/side)
 	legend, err := graph.CreateSubGraphByName("cluster_legend")
 	if err != nil {
 		return err
@@ -361,15 +360,17 @@ func (g *Generator) addLegend(graph *cgraph.Graph, opts Options) error {
 
 	// Create visual legend items as colored rectangles
 	legendItems := []struct {
-		name  string
-		label string
-		color string
+		name      string
+		label     string
+		color     string
+		penWidth  float64
 	}{
-		{"leg_initial", "Initial", "lightblue"},
-		{"leg_current", "Current", "lightgreen"},
-		{"leg_available", "Available", "lightyellow"},
-		{"leg_error", "Error", "lightcoral"},
-		{"leg_normal", "Normal", "white"},
+		{"leg_initial", "Initial (bold)", "lightblue", 2.0},
+		{"leg_final", "Final (double)", "white", 4.0},
+		{"leg_current", "Current", "lightgreen", 3.0},
+		{"leg_available", "Available", "lightyellow", 1.0},
+		{"leg_error", "Error", "lightcoral", 1.0},
+		{"leg_normal", "Normal", "white", 1.0},
 	}
 
 	for _, item := range legendItems {
@@ -381,6 +382,7 @@ func (g *Generator) addLegend(graph *cgraph.Graph, opts Options) error {
 		node.SetShape(cgraph.BoxShape)
 		node.SetFillColor(item.color)
 		node.SetStyle(cgraph.FilledNodeStyle)
+		node.SetPenWidth(item.penWidth)
 		node.SetWidth(1.0)
 		node.SetHeight(0.5)
 		node.SetFixedSize(true)
@@ -620,15 +622,11 @@ func ParseFormat(s string) (Format, error) {
 func ParseLayout(s string) (Layout, error) {
 	s = strings.ToLower(s)
 	switch s {
-	case "hierarchical", "dot":
-		return LayoutHierarchical, nil
-	case "circular", "circo":
-		return LayoutCircular, nil
 	case "vertical", "tb":
 		return LayoutVertical, nil
 	case "horizontal", "lr", "": // Default is horizontal
 		return LayoutHorizontal, nil
 	default:
-		return "", fmt.Errorf("unsupported layout: %s (supported: hierarchical, circular, vertical, horizontal)", s)
+		return "", fmt.Errorf("unsupported layout: %s (supported: horizontal, vertical)", s)
 	}
 }

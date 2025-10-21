@@ -384,10 +384,8 @@ func (h *Handler) generateHTML(instanceID string) string {
             <div class="control-group">
                 <label for="layout">Layout:</label>
                 <select id="layout">
-                    <option value="hierarchical" selected>Hierarchical</option>
+                    <option value="horizontal" selected>Horizontal (default)</option>
                     <option value="vertical">Vertical</option>
-                    <option value="horizontal">Horizontal</option>
-                    <option value="circular">Circular</option>
                 </select>
             </div>
 

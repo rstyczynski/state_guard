@@ -47,15 +47,13 @@ func TestParseLayout(t *testing.T) {
 		want    Layout
 		wantErr bool
 	}{
-		{"hierarchical", "hierarchical", LayoutHierarchical, false},
-		{"dot alias", "dot", LayoutHierarchical, false},
 		{"empty defaults to horizontal", "", LayoutHorizontal, false},
-		{"circular", "circular", LayoutCircular, false},
-		{"circo alias", "circo", LayoutCircular, false},
 		{"vertical", "vertical", LayoutVertical, false},
 		{"tb alias", "tb", LayoutVertical, false},
 		{"horizontal", "horizontal", LayoutHorizontal, false},
 		{"lr alias", "lr", LayoutHorizontal, false},
+		{"hierarchical not supported", "hierarchical", "", true},
+		{"circular not supported", "circular", "", true},
 		{"invalid", "invalid", "", true},
 	}
 
@@ -295,7 +293,8 @@ func TestLayoutAlgorithms(t *testing.T) {
 
 	gen := NewGenerator(def, nil)
 
-	layouts := []Layout{LayoutHierarchical, LayoutCircular, LayoutVertical, LayoutHorizontal}
+	// Only horizontal and vertical layouts are supported
+	layouts := []Layout{LayoutVertical, LayoutHorizontal}
 
 	for _, layout := range layouts {
 		t.Run(string(layout), func(t *testing.T) {
