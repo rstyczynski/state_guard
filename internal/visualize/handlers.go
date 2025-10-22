@@ -580,8 +580,24 @@ func (h *Handler) generateHTML(instanceID string) string {
                 const response = await fetch('/api/v1/assets/' + instanceID + '/history');
                 if (response.ok) {
                     const data = await response.json();
-                    // Reverse the array since API returns newest-first, but slider expects oldest-first
-                    historyData = (data.transitions || []).reverse();
+                    const transitions = (data.transitions || []).reverse();
+
+                    // Convert transitions to states array (including initial state)
+                    historyData = [];
+                    if (transitions.length > 0) {
+                        // Add initial state (from_state of first transition)
+                        historyData.push({
+                            to_state: transitions[0].from_state,
+                            transitioned_at: null  // Initial state has no transition time
+                        });
+                        // Add all subsequent states (to_state of each transition)
+                        transitions.forEach(t => {
+                            historyData.push({
+                                to_state: t.to_state,
+                                transitioned_at: t.transitioned_at
+                            });
+                        });
+                    }
                     updateTimeline();
                 }
             } catch (error) {
@@ -661,8 +677,15 @@ func (h *Handler) generateHTML(instanceID string) string {
                 const entry = historyData[historyData.length - 1];
                 document.getElementById('timeline-state').innerHTML =
                     'State: <strong>' + entry.to_state + '</strong>';
-                document.getElementById('timeline-time').innerHTML =
-                    'Time: <strong>' + new Date(entry.transitioned_at).toLocaleString() + '</strong>';
+
+                // Handle initial state (no transition timestamp)
+                if (entry.transitioned_at) {
+                    document.getElementById('timeline-time').innerHTML =
+                        'Time: <strong>' + new Date(entry.transitioned_at).toLocaleString() + '</strong>';
+                } else {
+                    document.getElementById('timeline-time').innerHTML =
+                        'Time: <strong>Initial state</strong>';
+                }
             }
         }
 
@@ -843,8 +866,15 @@ func (h *Handler) generateHTML(instanceID string) string {
                     const entry = historyData[index];
                     document.getElementById('timeline-state').innerHTML =
                         'State: <strong>' + entry.to_state + '</strong>';
-                    document.getElementById('timeline-time').innerHTML =
-                        'Time: <strong>' + new Date(entry.transitioned_at).toLocaleString() + '</strong>';
+
+                    // Handle initial state (no transition timestamp)
+                    if (entry.transitioned_at) {
+                        document.getElementById('timeline-time').innerHTML =
+                            'Time: <strong>' + new Date(entry.transitioned_at).toLocaleString() + '</strong>';
+                    } else {
+                        document.getElementById('timeline-time').innerHTML =
+                            'Time: <strong>Initial state</strong>';
+                    }
 
                     // Re-render diagram with historical state highlighted by server
                     refreshDiagram(entry.to_state);
