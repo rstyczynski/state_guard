@@ -448,20 +448,8 @@ func (h *Handler) generateHTML(instanceID string) string {
         /* State action icons */
         .state-action-icon {
             cursor: pointer;
-            opacity: 0.7;
-            transition: opacity 0.2s, transform 0.2s;
-            font-size: 18px;
             user-select: none;
-        }
-        .state-action-icon:hover {
-            opacity: 1;
-            transform: scale(1.2);
-        }
-        .state-icon-info {
-            fill: #667eea;
-        }
-        .state-icon-transition {
-            fill: #10b981;
+            fill: #666;
         }
         /* Timeline slider */
         .timeline-container {
@@ -758,20 +746,33 @@ func (h *Handler) generateHTML(instanceID string) string {
 
                 const bbox = polygon.getBBox();
 
-                // Create info icon (ⓘ) in top-left corner
+                // Get label font size to calculate icon size (75% of label)
+                const labelText = node.querySelector('text');
+                const labelFontSize = labelText ? parseFloat(window.getComputedStyle(labelText).fontSize) : 14;
+                const iconSize = labelFontSize * 0.75;
+
+                // Position icons in bottom-right corner, side by side: ⓘ ➜
+                const iconSpacing = iconSize + 2; // small gap between icons
+                const rightMargin = 5;
+                const bottomMargin = 5;
+
+                // Create info icon (ⓘ) - first icon from right
                 const infoIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 infoIcon.textContent = 'ⓘ';
-                infoIcon.setAttribute('x', bbox.x + 8);
-                infoIcon.setAttribute('y', bbox.y + 18);
-                infoIcon.setAttribute('class', 'state-action-icon state-icon-info');
+                infoIcon.setAttribute('x', bbox.x + bbox.width - iconSpacing - rightMargin);
+                infoIcon.setAttribute('y', bbox.y + bbox.height - bottomMargin);
+                infoIcon.setAttribute('font-size', iconSize);
+                infoIcon.setAttribute('class', 'state-action-icon');
                 infoIcon.style.pointerEvents = 'auto';
 
-                // Create transition icon (➜) in top-right corner
+                // Create transition icon (➜) - second icon from right
                 const transIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 transIcon.textContent = '➜';
-                transIcon.setAttribute('x', bbox.x + bbox.width - 22);
-                transIcon.setAttribute('y', bbox.y + 18);
-                transIcon.setAttribute('class', 'state-action-icon state-icon-transition');
+                transIcon.setAttribute('x', bbox.x + bbox.width - rightMargin);
+                transIcon.setAttribute('y', bbox.y + bbox.height - bottomMargin);
+                transIcon.setAttribute('font-size', iconSize);
+                transIcon.setAttribute('text-anchor', 'end');
+                transIcon.setAttribute('class', 'state-action-icon');
                 transIcon.style.pointerEvents = 'auto';
 
                 // Add icons to the node
