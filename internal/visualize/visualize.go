@@ -242,11 +242,16 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 		node.SetHeight(0.6)
 		node.SetFixedSize(true)
 
-		// Set colors
+		// Set colors (order matters: check isCurrent first!)
 		if isCurrent {
+			// Current state always gets green, even if it's FAILED/ERROR
 			node.SetFillColor("lightgreen")
 			node.SetStyle(cgraph.FilledNodeStyle)
 			//node.SetPenWidth(3.0)
+		} else if state == "FAILED" || state == "ERROR" {
+			// Error states get coral (but not when current)
+			node.SetFillColor("lightcoral")
+			node.SetStyle(cgraph.FilledNodeStyle)
 		} else if isAvailable {
 			node.SetFillColor("lightyellow")
 			node.SetStyle(cgraph.FilledNodeStyle)
@@ -263,12 +268,6 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 		// Double outline for final states
 		if isFinal && !isCurrent {
 			node.SetPenWidth(4.0)
-			node.SetStyle(cgraph.FilledNodeStyle)
-		}
-
-		// Special styling for error states
-		if state == "FAILED" || state == "ERROR" {
-			node.SetFillColor("lightcoral")
 			node.SetStyle(cgraph.FilledNodeStyle)
 		}
 
@@ -297,7 +296,7 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 		}
 		anyNode.SetLabel("ANY STATE")
 		anyNode.SetShape(cgraph.BoxShape)
-		anyNode.SetFillColor("lightyellow")
+		anyNode.SetFillColor("white")
 		anyNode.SetStyle(cgraph.FilledNodeStyle)
 
 		// Create arrow from ANY STATE to wildcard target

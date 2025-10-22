@@ -418,45 +418,32 @@ func (h *Handler) generateHTML(instanceID string) string {
             cursor: pointer;
             padding: 0;
         }
-        /* Pan and zoom controls */
+        /* Zoom controls in command bar */
         .zoom-controls {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: white;
-            border-radius: 4px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            padding: 6px;
-            min-width: 70px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: 15px;
         }
         .zoom-btn {
-            width: 100%%;
-            height: 32px;
-            border: none;
+            padding: 6px 10px;
+            font-size: 14px;
+            border: 1px solid #ddd;
             background: white;
+            color: #333;
             cursor: pointer;
-            font-size: 16px;
-            border-radius: 2px;
-            transition: background 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
+            border-radius: 3px;
+            transition: all 0.2s;
         }
         .zoom-btn:hover {
             background: #f0f0f0;
+            border-color: #999;
         }
         .zoom-level {
-            padding: 6px 8px;
-            text-align: center;
-            font-size: 12px;
-            font-weight: bold;
-            color: #666;
-            border-top: 1px solid #e0e0e0;
-            background: #fafafa;
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+            margin-left: 5px;
         }
         /* Timeline slider */
         .timeline-container {
@@ -523,28 +510,18 @@ func (h *Handler) generateHTML(instanceID string) string {
 
             <div class="control-group checkbox-group">
                 <input type="checkbox" id="available" checked>
-                <label for="available">Show Available States</label>
+                <label for="available">Indicate Next States</label>
+            </div>
+
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="zoomIn()" title="Zoom in">+</button>
+                <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
+                <button class="zoom-btn" onclick="resetZoom()" title="Reset zoom">⊙</button>
+                <span class="zoom-level" id="zoom-level">100%%</span>
             </div>
 
             <button onclick="refreshDiagram()">Refresh</button>
             <button onclick="downloadDiagram()">Download</button>
-        </div>
-
-        <div class="diagram-container">
-            <div class="diagram-wrapper" id="diagram-wrapper">
-                <div class="zoom-controls" id="zoom-controls" style="display:none;">
-                    <button class="zoom-btn" onclick="zoomIn()" title="Zoom in"><span>↑</span> +</button>
-                    <button class="zoom-btn" onclick="zoomOut()" title="Zoom out"><span>↓</span> −</button>
-                    <button class="zoom-btn" onclick="resetZoom()" title="Reset zoom">⊙</button>
-                    <div class="zoom-level" id="zoom-level">100%%</div>
-                </div>
-                <div id="diagram">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <div>Loading diagram...</div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <div class="timeline-container" id="timeline-container">
@@ -553,6 +530,17 @@ func (h *Handler) generateHTML(instanceID string) string {
                 <span id="timeline-time">Time: <strong>-</strong></span>
             </div>
             <input type="range" id="timeline-slider" class="timeline-slider" min="0" max="100" value="0">
+        </div>
+
+        <div class="diagram-container">
+            <div class="diagram-wrapper" id="diagram-wrapper">
+                <div id="diagram">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div>Loading diagram...</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -657,16 +645,36 @@ func (h *Handler) generateHTML(instanceID string) string {
                         return blob.text().then(svg => {
                             diagramDiv.innerHTML = svg;
                             enableInteractivity();
+                            applyZoom(); // Restore zoom level after SVG reload
                             if (!highlightState) {
                                 resetTimelinePosition();
                             }
                         });
                     } else if (format === 'png') {
+                        // Clear old SVG reference
+                        svgElement = null;
+
                         const img = document.createElement('img');
                         img.src = URL.createObjectURL(blob);
                         img.style.maxWidth = '100%%';
+                        img.style.transformOrigin = 'center';
+                        img.style.cursor = 'grab';
+                        img.style.userSelect = 'none';
                         diagramDiv.innerHTML = '';
                         diagramDiv.appendChild(img);
+
+                        // Store img reference for zoom/pan
+                        svgElement = img;
+
+                        // Enable pan for PNG
+                        img.addEventListener('mousedown', startPan);
+                        img.addEventListener('mousemove', pan);
+                        img.addEventListener('mouseup', endPan);
+                        img.addEventListener('mouseleave', endPan);
+
+                        // Apply zoom to PNG
+                        applyZoom();
+
                         if (!highlightState) {
                             resetTimelinePosition();
                         }
@@ -708,8 +716,8 @@ func (h *Handler) generateHTML(instanceID string) string {
             svgElement = document.querySelector('#diagram svg');
             if (!svgElement) return;
 
-            // Show zoom controls for SVG
-            document.getElementById('zoom-controls').style.display = 'flex';
+            // Set cursor for panning
+            svgElement.style.cursor = 'grab';
 
             // Enable pan with mouse drag
             svgElement.addEventListener('mousedown', startPan);
@@ -838,6 +846,7 @@ func (h *Handler) generateHTML(instanceID string) string {
         }
 
         function applyZoom() {
+            // Apply zoom to current diagram element (SVG or IMG)
             if (!svgElement) return;
             svgElement.style.transform = 'scale(' + zoomLevel + ') translate(' + panOffset.x + 'px, ' + panOffset.y + 'px)';
         }
@@ -851,9 +860,16 @@ func (h *Handler) generateHTML(instanceID string) string {
         }
 
         function startPan(e) {
-            if (e.target.classList.contains('state-clickable')) return;
+            // For SVG, skip if clicking on a clickable state
+            if (svgElement && svgElement.tagName === 'svg' && e.target.classList.contains('state-clickable')) {
+                return;
+            }
             isPanning = true;
             startPoint = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+            // Change cursor to grabbing
+            if (svgElement) {
+                svgElement.style.cursor = 'grabbing';
+            }
         }
 
         function pan(e) {
@@ -868,6 +884,10 @@ func (h *Handler) generateHTML(instanceID string) string {
 
         function endPan() {
             isPanning = false;
+            // Restore cursor to grab
+            if (svgElement) {
+                svgElement.style.cursor = 'grab';
+            }
         }
 
         // Timeline functions
