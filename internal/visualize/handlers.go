@@ -429,20 +429,34 @@ func (h *Handler) generateHTML(instanceID string) string {
             display: flex;
             flex-direction: column;
             gap: 2px;
-            padding: 4px;
+            padding: 6px;
+            min-width: 70px;
         }
         .zoom-btn {
-            width: 32px;
+            width: 100%%;
             height: 32px;
             border: none;
             background: white;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 16px;
             border-radius: 2px;
             transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
         }
         .zoom-btn:hover {
             background: #f0f0f0;
+        }
+        .zoom-level {
+            padding: 6px 8px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: #666;
+            border-top: 1px solid #e0e0e0;
+            background: #fafafa;
         }
         /* Timeline slider */
         .timeline-container {
@@ -519,9 +533,10 @@ func (h *Handler) generateHTML(instanceID string) string {
         <div class="diagram-container">
             <div class="diagram-wrapper" id="diagram-wrapper">
                 <div class="zoom-controls" id="zoom-controls" style="display:none;">
-                    <button class="zoom-btn" onclick="zoomIn()" title="Zoom in">+</button>
-                    <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
+                    <button class="zoom-btn" onclick="zoomIn()" title="Zoom in"><span>↑</span> +</button>
+                    <button class="zoom-btn" onclick="zoomOut()" title="Zoom out"><span>↓</span> −</button>
                     <button class="zoom-btn" onclick="resetZoom()" title="Reset zoom">⊙</button>
+                    <div class="zoom-level" id="zoom-level">100%%</div>
                 </div>
                 <div id="diagram">
                     <div class="loading">
@@ -806,22 +821,33 @@ func (h *Handler) generateHTML(instanceID string) string {
         function zoomIn() {
             zoomLevel *= 1.2;
             applyZoom();
+            updateZoomDisplay();
         }
 
         function zoomOut() {
             zoomLevel /= 1.2;
             applyZoom();
+            updateZoomDisplay();
         }
 
         function resetZoom() {
             zoomLevel = 1;
             panOffset = { x: 0, y: 0 };
             applyZoom();
+            updateZoomDisplay();
         }
 
         function applyZoom() {
             if (!svgElement) return;
             svgElement.style.transform = 'scale(' + zoomLevel + ') translate(' + panOffset.x + 'px, ' + panOffset.y + 'px)';
+        }
+
+        function updateZoomDisplay() {
+            const zoomPercent = Math.round(zoomLevel * 100);
+            const zoomLevelEl = document.getElementById('zoom-level');
+            if (zoomLevelEl) {
+                zoomLevelEl.textContent = zoomPercent + '%%';
+            }
         }
 
         function startPan(e) {
