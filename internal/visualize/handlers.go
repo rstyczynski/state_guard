@@ -445,6 +445,24 @@ func (h *Handler) generateHTML(instanceID string) string {
             color: #333;
             margin-left: 5px;
         }
+        /* State action icons */
+        .state-action-icon {
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s, transform 0.2s;
+            font-size: 18px;
+            user-select: none;
+        }
+        .state-action-icon:hover {
+            opacity: 1;
+            transform: scale(1.2);
+        }
+        .state-icon-info {
+            fill: #667eea;
+        }
+        .state-icon-transition {
+            fill: #10b981;
+        }
         /* Timeline slider */
         .timeline-container {
             padding: 15px 30px;
@@ -725,7 +743,7 @@ func (h *Handler) generateHTML(instanceID string) string {
             svgElement.addEventListener('mouseup', endPan);
             svgElement.addEventListener('mouseleave', endPan);
 
-            // Add click handlers to state nodes
+            // Add action icons to state nodes
             const stateNodes = svgElement.querySelectorAll('g.node');
             stateNodes.forEach(node => {
                 const title = node.querySelector('title');
@@ -734,24 +752,46 @@ func (h *Handler) generateHTML(instanceID string) string {
                 const stateName = title.textContent.trim();
                 if (stateName.startsWith('leg_') || stateName === 'ANY_STATE') return;
 
-                // Make state clickable
+                // Get the polygon/rectangle bounds
                 const polygon = node.querySelector('polygon, ellipse, circle');
-                if (polygon) {
-                    polygon.classList.add('state-clickable');
-                    polygon.style.cursor = 'pointer';
-                }
+                if (!polygon) return;
 
-                node.addEventListener('click', (e) => {
+                const bbox = polygon.getBBox();
+
+                // Create info icon (ⓘ) in top-left corner
+                const infoIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                infoIcon.textContent = 'ⓘ';
+                infoIcon.setAttribute('x', bbox.x + 8);
+                infoIcon.setAttribute('y', bbox.y + 18);
+                infoIcon.setAttribute('class', 'state-action-icon state-icon-info');
+                infoIcon.style.pointerEvents = 'auto';
+
+                // Create transition icon (➜) in top-right corner
+                const transIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                transIcon.textContent = '➜';
+                transIcon.setAttribute('x', bbox.x + bbox.width - 22);
+                transIcon.setAttribute('y', bbox.y + 18);
+                transIcon.setAttribute('class', 'state-action-icon state-icon-transition');
+                transIcon.style.pointerEvents = 'auto';
+
+                // Add icons to the node
+                node.appendChild(infoIcon);
+                node.appendChild(transIcon);
+
+                // Add click handlers
+                infoIcon.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    handleStateClick(stateName);
+                    showMetadata(stateName);
+                });
+
+                transIcon.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await handleTransitionClick(stateName);
                 });
             });
         }
 
-        async function handleStateClick(stateName) {
-            // Show metadata panel
-            showMetadata(stateName);
-
+        async function handleTransitionClick(stateName) {
             // If state is available for transition, offer to transition to it
             if (currentAsset && currentAsset.current_state !== stateName) {
                 // Check if this is a valid transition
@@ -759,6 +799,8 @@ func (h *Handler) generateHTML(instanceID string) string {
                 if (isAvailable && confirm('Transition to ' + stateName + '?')) {
                     await transitionToState(stateName);
                 }
+            } else if (currentAsset && currentAsset.current_state === stateName) {
+                alert('Already in state: ' + stateName);
             }
         }
 
