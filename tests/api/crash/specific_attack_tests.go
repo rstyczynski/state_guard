@@ -596,3 +596,29 @@ func (c *CrashTestSuite) TestRaceConditions(t *testing.T) {
 		}
 	}
 }
+
+// Wrapper test functions to invoke the suite methods
+
+// TestSpecificAPIEndpointsWrapper runs the specific API endpoint tests
+func TestSpecificAPIEndpointsWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestSpecificAPIEndpoints(t)
+}
+
+// TestAssetTypePathInjectionWrapper runs the asset type path injection tests
+func TestAssetTypePathInjectionWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestAssetTypePathInjection(t)
+}
+
+// TestConcurrentAssetCreationWrapper runs the concurrent asset creation tests
+func TestConcurrentAssetCreationWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestConcurrentAssetCreation(t)
+}
+
+// TestRaceConditionsWrapper runs the race condition tests
+func TestRaceConditionsWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestRaceConditions(t)
+}

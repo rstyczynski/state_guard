@@ -530,3 +530,41 @@ collectErrors:
 		t.Errorf("High error rate: %.2f%% (%d errors out of %d total requests)", errorRate, errorCount, successCount+errorCount)
 	}
 }
+
+// Wrapper test functions to invoke the suite methods
+
+// TestPerformanceUnderLoadWrapper runs the performance under load tests
+func TestPerformanceUnderLoadWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestPerformanceUnderLoad(t)
+}
+
+// TestMemoryLeaksWrapper runs the memory leak tests
+func TestMemoryLeaksWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestMemoryLeaks(t)
+}
+
+// TestConnectionPoolExhaustionWrapper runs the connection pool exhaustion tests
+func TestConnectionPoolExhaustionWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestConnectionPoolExhaustion(t)
+}
+
+// TestLargePayloadHandlingWrapper runs the large payload handling tests
+func TestLargePayloadHandlingWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestLargePayloadHandling(t)
+}
+
+// TestSlowLorisWrapper runs the SlowLoris attack tests
+func TestSlowLorisWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestSlowLoris(t)
+}
+
+// TestResourceExhaustionWrapper runs the resource exhaustion tests
+func TestResourceExhaustionWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestResourceExhaustion(t)
+}
