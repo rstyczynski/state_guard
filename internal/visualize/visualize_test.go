@@ -812,3 +812,83 @@ func TestUnsupportedFormat(t *testing.T) {
 		t.Errorf("Expected 'unsupported format' error, got: %v", err)
 	}
 }
+
+func TestCurrentStateStaysGreenWithAvailableStates(t *testing.T) {
+	// Test the bug: when "Indicate Next States" is enabled,
+	// and current state happens to be in available states (e.g., self-loop),
+	// the current state should STILL be green, not yellow.
+	def := &fsm.Definition{
+		Version: 1,
+		Name:    "test_fsm",
+		Initial: "CREATED",
+		Final:   []string{"TERMINATED"},
+		States:  []string{"CREATED", "RUNNING", "TERMINATED"},
+		Transitions: []fsm.Transition{
+			{From: "CREATED", To: "RUNNING"},
+			{From: "RUNNING", To: "RUNNING"}, // Self-loop
+			{From: "RUNNING", To: "TERMINATED"},
+		},
+	}
+
+	gen := NewGenerator(def, nil)
+
+	opts := Options{
+		Format:           FormatJSON,
+		Layout:           LayoutHorizontal,
+		HighlightCurrent: true,
+		CurrentState:     "RUNNING",
+		ShowAvailable:    true,
+		AvailableStates:  []string{"RUNNING", "TERMINATED"}, // Current state IS in available
+	}
+
+	data, err := gen.GenerateDefinition(opts)
+	if err != nil {
+		t.Fatalf("GenerateDefinition() error = %v", err)
+	}
+
+	// Parse JSON to verify
+	var graphData GraphData
+	if err := json.Unmarshal(data, &graphData); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	// Find the RUNNING node
+	var runningNode *NodeData
+	for i := range graphData.Nodes {
+		if graphData.Nodes[i].ID == "RUNNING" {
+			runningNode = &graphData.Nodes[i]
+			break
+		}
+	}
+
+	if runningNode == nil {
+		t.Fatal("RUNNING node not found")
+	}
+
+	// RUNNING should be marked as CURRENT
+	if !runningNode.IsCurrent {
+		t.Error("RUNNING should be marked as current")
+	}
+
+	// RUNNING should NOT be marked as available (current state should never be "available")
+	if runningNode.IsAvailable {
+		t.Error("Current state (RUNNING) should NOT be marked as available, even when in AvailableStates list")
+	}
+
+	// TERMINATED should be marked as available
+	var terminatedNode *NodeData
+	for i := range graphData.Nodes {
+		if graphData.Nodes[i].ID == "TERMINATED" {
+			terminatedNode = &graphData.Nodes[i]
+			break
+		}
+	}
+
+	if terminatedNode == nil {
+		t.Fatal("TERMINATED node not found")
+	}
+
+	if !terminatedNode.IsAvailable {
+		t.Error("TERMINATED should be marked as available")
+	}
+}

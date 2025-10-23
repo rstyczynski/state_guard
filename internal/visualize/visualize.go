@@ -234,7 +234,8 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 		isInitial := state == g.definition.Initial
 		isFinal := g.isFinalState(state)
 		isCurrent := opts.HighlightCurrent && state == opts.CurrentState
-		isAvailable := opts.ShowAvailable && availableMap[state]
+		// Exclude current state from being marked as available (current state should always be green, not yellow)
+		isAvailable := opts.ShowAvailable && availableMap[state] && state != opts.CurrentState
 
 		// ALL states are rectangles with the same size
 		node.SetShape(cgraph.BoxShape)
@@ -475,7 +476,7 @@ func (g *Generator) generateJSON(opts Options) ([]byte, error) {
 			IsInitial:   state == g.definition.Initial,
 			IsFinal:     g.isFinalState(state),
 			IsCurrent:   opts.HighlightCurrent && state == opts.CurrentState,
-			IsAvailable: opts.ShowAvailable && availableMap[state],
+			IsAvailable: opts.ShowAvailable && availableMap[state] && state != opts.CurrentState,
 		}
 		data.Nodes = append(data.Nodes, node)
 	}
