@@ -179,9 +179,10 @@ func (h *Handler) HandleDiagramPage(w http.ResponseWriter, r *http.Request) {
 // parseOptions parses query parameters into visualization options
 func (h *Handler) parseOptions(r *http.Request) (Format, Layout, Options, error) {
 	opts := Options{
-		ColorScheme:  "light",
-		ShowHistory:  false,
-		ShowAvailable: false,
+		ColorScheme:      "light",
+		ShowHistory:      false,
+		ShowAvailable:    false,
+		HighlightCurrent: true, // Default to highlighting current state for asset visualizations
 	}
 
 	// Parse format
