@@ -217,13 +217,14 @@ GET    /api/v1/definitions      - List available FSM definitions
   - Highlight "hot paths" (most frequently used transitions)
 
 - **Interactive Features (HTML Wrapper):**
-  - Click states to see metadata
-  - Click next state to change the current state graphically
+  - Click states to see metadata. Use ⓘ icon on a state rectangle.
+  - Click next state to change the current state graphically. Use ➜ icon on a state rectangle.
+  - Action icons are located in right lower corner: ⓘ ➜. Use UNICODE characters 75% size of the label. Action icons are static i.e. does not animate in any way.
   - Hover tooltips showing transition rules (POSTPONED)
-  - Pan and zoom controls
   - Toggle views: definition-only vs instance-specific (POSTPONED)
   - Export buttons for different formats
-  - Timeline slider for historical state visualization
+  - Timeline slider for historical state visualization. Keep under command bar.
+  - Pan and zoom controls. Keep in the command bar.
 
 **API Endpoints:**
 ```

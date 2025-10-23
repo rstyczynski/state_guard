@@ -746,28 +746,28 @@ func (h *Handler) generateHTML(instanceID string) string {
 
                 const bbox = polygon.getBBox();
 
-                // Get label font size to calculate icon size (75% of label)
+                // Get label font size to calculate icon size (75%% of label)
                 const labelText = node.querySelector('text');
                 const labelFontSize = labelText ? parseFloat(window.getComputedStyle(labelText).fontSize) : 14;
                 const iconSize = labelFontSize * 0.75;
 
-                // Position icons in bottom-right corner, side by side: ⓘ ➜
-                const iconSpacing = iconSize + 2; // small gap between icons
+                // Position icons in bottom-right corner, side by side: ℹ️ ⚡
+                const iconSpacing = iconSize + 15; // small gap between icons
                 const rightMargin = 5;
                 const bottomMargin = 5;
 
-                // Create info icon (ⓘ) - first icon from right
+                // Create info icon (ℹ️) - first icon from right
                 const infoIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                infoIcon.textContent = 'ⓘ';
+                infoIcon.textContent = 'ℹ️';
                 infoIcon.setAttribute('x', bbox.x + bbox.width - iconSpacing - rightMargin);
                 infoIcon.setAttribute('y', bbox.y + bbox.height - bottomMargin);
                 infoIcon.setAttribute('font-size', iconSize);
                 infoIcon.setAttribute('class', 'state-action-icon');
                 infoIcon.style.pointerEvents = 'auto';
 
-                // Create transition icon (➜) - second icon from right
+                // Create transition icon (⚡) - second icon from right
                 const transIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                transIcon.textContent = '➜';
+                transIcon.textContent = '⚡';
                 transIcon.setAttribute('x', bbox.x + bbox.width - rightMargin);
                 transIcon.setAttribute('y', bbox.y + bbox.height - bottomMargin);
                 transIcon.setAttribute('font-size', iconSize);
