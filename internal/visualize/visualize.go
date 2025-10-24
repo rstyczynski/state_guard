@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -167,26 +168,39 @@ func (g *Generator) generateGraphViz(opts Options) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create graphviz: %w", err)
 	}
-	defer gv.Close()
 
 	graph, err := g.createGraph(gv, opts)
 	if err != nil {
+		gv.Close() // Clean up GraphViz on error
 		return nil, err
 	}
-	defer graph.Close()
 
 	var buf bytes.Buffer
 
 	switch opts.Format {
 	case FormatSVG:
 		if err := gv.Render(ctx, graph, graphviz.SVG, &buf); err != nil {
+			graph.Close() // Clean up graph on error
+			gv.Close()    // Clean up GraphViz on error
 			return nil, fmt.Errorf("SVG render failed: %w", err)
 		}
 	case FormatPNG:
 		if err := gv.Render(ctx, graph, graphviz.PNG, &buf); err != nil {
+			graph.Close() // Clean up graph on error
+			gv.Close()    // Clean up GraphViz on error
 			return nil, fmt.Errorf("PNG render failed: %w", err)
 		}
 	}
+
+	// CRITICAL: Explicitly close resources IMMEDIATELY after rendering
+	// to prevent WASM memory accumulation on rapid sequential renders
+	graph.Close()
+	gv.Close()
+
+	// Force garbage collection to free WASM memory immediately.
+	// GraphViz WASM has limited memory and rapid renders (timeline slider)
+	// can exhaust it if GC doesn't run between renders.
+	runtime.GC()
 
 	return buf.Bytes(), nil
 }
