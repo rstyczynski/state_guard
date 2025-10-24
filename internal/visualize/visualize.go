@@ -124,7 +124,11 @@ func (g *Generator) GenerateInstance(ctx context.Context, instanceID string, opt
 	// Set current state (only if not already set by query parameter)
 	opts.HighlightCurrent = true
 	if opts.CurrentState == "" {
-		opts.CurrentState = instance.CurrentState
+		// Trim whitespace to ensure exact matching
+		opts.CurrentState = strings.TrimSpace(instance.CurrentState)
+	} else {
+		// Also trim if set by query parameter
+		opts.CurrentState = strings.TrimSpace(opts.CurrentState)
 	}
 
 	// Load available transitions if needed
@@ -230,12 +234,17 @@ func (g *Generator) createGraph(gv *graphviz.Graphviz, opts Options) (*cgraph.Gr
 			return nil, err
 		}
 
+		// Trim state name for comparison to handle any whitespace issues
+		trimmedState := strings.TrimSpace(state)
+		trimmedCurrentState := strings.TrimSpace(opts.CurrentState)
+
 		// Styling based on state type
-		isInitial := state == g.definition.Initial
-		isFinal := g.isFinalState(state)
-		isCurrent := opts.HighlightCurrent && state == opts.CurrentState
+		isInitial := trimmedState == g.definition.Initial
+		isFinal := g.isFinalState(trimmedState)
+		// IMPORTANT: Current state must ALWAYS be green, so check this first
+		isCurrent := opts.HighlightCurrent && trimmedState == trimmedCurrentState
 		// Exclude current state from being marked as available (current state should always be green, not yellow)
-		isAvailable := opts.ShowAvailable && availableMap[state] && state != opts.CurrentState
+		isAvailable := opts.ShowAvailable && availableMap[trimmedState] && trimmedState != trimmedCurrentState
 
 		// ALL states are rectangles with the same size
 		node.SetShape(cgraph.BoxShape)
@@ -470,13 +479,17 @@ func (g *Generator) generateJSON(opts Options) ([]byte, error) {
 
 	// Add regular state nodes
 	for _, state := range g.definition.States {
+		// Trim state names for consistent comparison
+		trimmedState := strings.TrimSpace(state)
+		trimmedCurrentState := strings.TrimSpace(opts.CurrentState)
+
 		node := NodeData{
-			ID:          state,
-			Label:       state,
-			IsInitial:   state == g.definition.Initial,
-			IsFinal:     g.isFinalState(state),
-			IsCurrent:   opts.HighlightCurrent && state == opts.CurrentState,
-			IsAvailable: opts.ShowAvailable && availableMap[state] && state != opts.CurrentState,
+			ID:          trimmedState,
+			Label:       trimmedState,
+			IsInitial:   trimmedState == g.definition.Initial,
+			IsFinal:     g.isFinalState(trimmedState),
+			IsCurrent:   opts.HighlightCurrent && trimmedState == trimmedCurrentState,
+			IsAvailable: opts.ShowAvailable && availableMap[trimmedState] && trimmedState != trimmedCurrentState,
 		}
 		data.Nodes = append(data.Nodes, node)
 	}
