@@ -641,8 +641,7 @@ func (h *Handler) generateHTML(instanceID string) string {
                 layout: layout,
                 history: history.toString(),
                 available: available.toString(),
-                highlight_current: highlightCurrent.toString(),
-                _t: new Date().getTime() // Cache-busting timestamp
+                highlight_current: highlightCurrent.toString()
             });
 
             // Add highlight_state parameter for timeline slider
@@ -1000,8 +999,7 @@ func (h *Handler) generateHTML(instanceID string) string {
                 layout: layout,
                 history: history.toString(),
                 available: available.toString(),
-                highlight_current: highlightCurrent.toString(),
-                _t: new Date().getTime() // Cache-busting
+                highlight_current: highlightCurrent.toString()
             });
 
             const url = '/api/v1/visualize/asset/' + instanceID + '?' + params.toString();
