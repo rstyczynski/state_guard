@@ -1014,14 +1014,14 @@ func (h *Handler) generateHTML(instanceID string) string {
         }
 
         // Auto-refresh on control change
-        document.getElementById('format').addEventListener('change', refreshDiagram);
-        document.getElementById('layout').addEventListener('change', refreshDiagram);
+        document.getElementById('format').addEventListener('change', () => refreshDiagram());
+        document.getElementById('layout').addEventListener('change', () => refreshDiagram());
         document.getElementById('history').addEventListener('change', () => {
             refreshDiagram();
             loadHistoryData();
         });
-        document.getElementById('available').addEventListener('change', refreshDiagram);
-        document.getElementById('highlight_current').addEventListener('change', refreshDiagram);
+        document.getElementById('available').addEventListener('change', () => refreshDiagram());
+        document.getElementById('highlight_current').addEventListener('change', () => refreshDiagram());
 
         // Initial load
         loadAssetData().then(() => {
