@@ -385,6 +385,13 @@ paths:
         schema:
           type: boolean
           default: true
+      - name: highlight_current
+        in: query
+        required: false
+        description: Highlight current state in green
+        schema:
+          type: boolean
+          default: true
       - name: history
         in: query
         required: false

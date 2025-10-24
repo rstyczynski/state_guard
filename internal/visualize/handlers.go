@@ -211,6 +211,15 @@ func (h *Handler) parseOptions(r *http.Request) (Format, Layout, Options, error)
 		opts.ShowAvailable = true
 	}
 
+	// Parse highlight_current (explicitly allow user to disable)
+	if highlightCurrentStr := r.URL.Query().Get("highlight_current"); highlightCurrentStr != "" {
+		if highlightCurrentStr == "false" {
+			opts.HighlightCurrent = false
+		} else if highlightCurrentStr == "true" {
+			opts.HighlightCurrent = true
+		}
+	}
+
 	// Parse color scheme
 	if scheme := r.URL.Query().Get("scheme"); scheme != "" {
 		opts.ColorScheme = scheme
@@ -520,6 +529,11 @@ func (h *Handler) generateHTML(instanceID string) string {
                 <label for="available">Indicate Next States</label>
             </div>
 
+            <div class="control-group checkbox-group">
+                <input type="checkbox" id="highlight_current" checked>
+                <label for="highlight_current">Highlight Current State</label>
+            </div>
+
             <div class="zoom-controls">
                 <button class="zoom-btn" onclick="zoomIn()" title="Zoom in">+</button>
                 <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
@@ -620,12 +634,14 @@ func (h *Handler) generateHTML(instanceID string) string {
             const layout = document.getElementById('layout').value;
             const history = document.getElementById('history').checked;
             const available = document.getElementById('available').checked;
+            const highlightCurrent = document.getElementById('highlight_current').checked;
 
             const params = new URLSearchParams({
                 format: format,
                 layout: layout,
                 history: history.toString(),
                 available: available.toString(),
+                highlight_current: highlightCurrent.toString(),
                 _t: new Date().getTime() // Cache-busting timestamp
             });
 
@@ -977,12 +993,14 @@ func (h *Handler) generateHTML(instanceID string) string {
             const layout = document.getElementById('layout').value;
             const history = document.getElementById('history').checked;
             const available = document.getElementById('available').checked;
+            const highlightCurrent = document.getElementById('highlight_current').checked;
 
             const params = new URLSearchParams({
                 format: format,
                 layout: layout,
                 history: history.toString(),
                 available: available.toString(),
+                highlight_current: highlightCurrent.toString(),
                 _t: new Date().getTime() // Cache-busting
             });
 
@@ -1003,6 +1021,7 @@ func (h *Handler) generateHTML(instanceID string) string {
             loadHistoryData();
         });
         document.getElementById('available').addEventListener('change', refreshDiagram);
+        document.getElementById('highlight_current').addEventListener('change', refreshDiagram);
 
         // Initial load
         loadAssetData().then(() => {

@@ -56,6 +56,30 @@ func TestParseOptions(t *testing.T) {
 			expectedFormat:          FormatPNG,
 			expectedLayout:          LayoutVertical,
 		},
+		{
+			name:                    "highlight_current=false disables current state highlighting",
+			queryParams:             map[string]string{"highlight_current": "false"},
+			expectedHighlightCurrent: false,
+			expectedShowAvailable:   false,
+			expectedFormat:          FormatSVG,
+			expectedLayout:          LayoutHorizontal,
+		},
+		{
+			name:                    "highlight_current=true explicitly enables highlighting",
+			queryParams:             map[string]string{"highlight_current": "true"},
+			expectedHighlightCurrent: true,
+			expectedShowAvailable:   false,
+			expectedFormat:          FormatSVG,
+			expectedLayout:          LayoutHorizontal,
+		},
+		{
+			name:                    "highlight_current=false with available=true",
+			queryParams:             map[string]string{"highlight_current": "false", "available": "true"},
+			expectedHighlightCurrent: false,
+			expectedShowAvailable:   true,
+			expectedFormat:          FormatSVG,
+			expectedLayout:          LayoutHorizontal,
+		},
 	}
 
 	for _, tt := range tests {
