@@ -297,13 +297,36 @@ GET /docs/diagram/:instanceID
 - D3.js or Cytoscape.js for interactive features
 
 **Critical Bug Fixes:**
+
 - ✓ **GraphViz WASM Race Condition (2025-10-24):**
   - **Problem:** Rapid timeline slider movements caused nil pointer dereference crashes
   - **Root Cause:** GraphViz WASM doesn't support concurrent access. Multiple simultaneous requests created race conditions causing graph objects to become nil
-  - **Solution:** Added `sync.Mutex` (`graphvizMutex`) to serialize all GraphViz operations
-  - **Files Changed:** `internal/visualize/visualize.go` (added mutex to Generator struct, protected generateGraphViz function)
+  - **Solution:** Added `sync.Mutex` (`globalGraphVizMutex`) to serialize all GraphViz operations across all requests
+  - **Files Changed:** `internal/visualize/visualize.go` (global mutex, immediate resource cleanup with runtime.GC())
   - **Test Coverage:** Added `TestRapidVisualizationRenders` crash test with 260 concurrent render scenarios
   - **Verified:** Server handles 50+ concurrent requests without crashes, all tests pass
+
+- ⚠️ **GraphViz WASM Memory Leak - Known Upstream Issue (2025-10-24):**
+  - **Problem:** WASM memory accumulates over time and is never freed, eventually causing out-of-bounds errors
+  - **Root Cause:** `go-graphviz` library bug (issue #111) - `gv.Close()` does NOT free WASM linear memory
+    - WASM linear memory is separate from Go's heap
+    - Go's `runtime.GC()` cannot collect WASM memory
+    - WASM module persists for process lifetime
+    - Each render leaks WASM memory that cannot be reclaimed
+  - **Workaround:** Monitor memory usage and restart process (`os.Exit(1)`) when threshold exceeded (default: 50MB)
+    - Configurable via `GRAPHVIZ_MEMORY_LIMIT_BEFORE` environment variable
+    - Process restart is the ONLY way to free WASM memory
+    - This is not a bug in our code - it's a limitation of go-graphviz
+  - **Impact:** Production deployments should:
+    - Run behind a process manager (systemd, k8s) for automatic restart
+    - Monitor memory growth over time
+    - Tune memory thresholds based on usage patterns
+  - **Upstream Issue:** https://github.com/goccy/go-graphviz/issues/111
+  - **Alternative Solutions Evaluated:**
+    - ❌ Instance pooling - doesn't prevent render data leaks
+    - ❌ Cache clearing - only affects Go-side structures
+    - ❌ Aggressive GC - Go GC doesn't manage WASM memory
+    - ✅ Process restart - only reliable solution
 
 
 ---

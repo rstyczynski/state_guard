@@ -64,8 +64,23 @@ var (
 )
 
 // WASM memory management - CONFIGURABLE PARAMETERS
-// NOTE: Using panic instead of os.Exit(1) to avoid CrowdStrike security detection
-// Panic will be caught by HTTP handlers and cause process restart
+//
+// CRITICAL LIMITATION: go-graphviz WASM Memory Leak (github.com/goccy/go-graphviz issue #111)
+// =======================================================================================
+// The go-graphviz library has a KNOWN BUG where WASM linear memory is NOT freed when
+// calling Close(). Each render allocates WASM memory that accumulates over time.
+//
+// Root Cause:
+// - GraphViz uses WebAssembly with its own linear memory space (separate from Go heap)
+// - gv.Close() only closes the Go wrapper, NOT the underlying WASM memory
+// - WASM module is loaded once and its memory persists for process lifetime
+// - Go's runtime.GC() cannot collect WASM linear memory
+//
+// The ONLY reliable solution is os.Exit(1) to restart the process and free WASM memory.
+// This is not a bug in our code - it's a fundamental limitation of the current go-graphviz implementation.
+//
+// See: https://github.com/goccy/go-graphviz/issues/111
+//
 var (
 	// Memory thresholds (configurable via environment variables)
 	wasmMemoryLimitBeforeRender = getEnvInt("GRAPHVIZ_MEMORY_LIMIT_BEFORE", 50) // MB - restart before render
@@ -439,10 +454,17 @@ func resetWasmMemory() {
 	log.Printf("GraphViz: WASM memory state reset (reset count: %d)", wasmResetCount)
 }
 
-// destroyAllWasmInstances function removed - no longer needed
-
-// restartProcess restarts the entire Go process as a last resort
-// Using panic instead of os.Exit(1) to avoid CrowdStrike detection
+// restartProcess restarts the entire Go process to free WASM memory
+//
+// This is the ONLY reliable way to free GraphViz WASM memory due to a known bug
+// in go-graphviz (issue #111) where Close() does not free WASM linear memory.
+//
+// WASM linear memory is separate from Go's heap and cannot be freed by:
+// - gv.Close() - only closes Go wrapper
+// - runtime.GC() - Go GC doesn't manage WASM memory
+// - Clearing caches/pools - only affects Go-side structures
+//
+// Process restart is the only way to truly free WASM memory.
 func restartProcess() {
 	processRestartCount++
 	if processRestartCount > maxProcessRestarts {
@@ -451,7 +473,8 @@ func restartProcess() {
 	}
 
 	log.Printf("GraphViz: Process restart #%d - restarting entire process", processRestartCount)
-	log.Printf("GraphViz: WASM module cannot be destroyed, restarting process to free all memory")
+	log.Printf("GraphViz: WASM memory leak requires process restart (go-graphviz issue #111)")
+	log.Printf("GraphViz: Close() does NOT free WASM linear memory - os.Exit(1) is the only solution")
 
 	os.Exit(1)
 }
@@ -712,9 +735,18 @@ func (g *Generator) generateGraphViz(opts Options) ([]byte, error) {
 
 	debugLog("Graph closed, GraphViz instance returned to pool")
 
-	// Note: GraphViz WASM instances cannot be freed once created
-	// The only way to free WASM memory is to restart the process
-	// Pool cleanup is ineffective for WASM memory management
+	// CRITICAL: GraphViz WASM Memory Leak (go-graphviz issue #111)
+	// ================================================================
+	// WASM instances CANNOT be freed by Close() - memory leaks are unavoidable.
+	// The WASM linear memory accumulates until process restart (os.Exit(1)).
+	//
+	// Why pooling/caching doesn't solve the leak:
+	// - Each render allocates WASM memory for graph data structures
+	// - graph.Close() is called above, but WASM memory is NOT freed
+	// - Pooling the gv instance only prevents re-creating the WASM module
+	// - The render data itself still leaks in WASM linear memory
+	//
+	// This is why we monitor memory and restart when threshold is exceeded.
 
 	// Note: Don't close the current instance here as it's pooled and reused
 	// Closing it would cause WASM errors on subsequent renders
