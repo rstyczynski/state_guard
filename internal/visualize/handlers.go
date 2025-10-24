@@ -3,12 +3,14 @@ package visualize
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rstyczynski/fsm_v2/internal/fsm"
 	"github.com/rstyczynski/fsm_v2/internal/storage"
 )
 
@@ -29,7 +31,25 @@ func NewHandler(store storage.Storage, assetDir string) *Handler {
 // HandleVisualizeAsset generates visualization for a specific asset instance
 // GET /api/v1/visualize/asset/:instanceID
 func (h *Handler) HandleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
+	// Panic recovery with detailed logging
+	defer func() {
+		if panicErr := recover(); panicErr != nil {
+			stack := debug.Stack()
+			log.Printf("CRASH in HandleVisualizeAsset: %v\nStack trace:\n%s", panicErr, string(stack))
+
+			// Log memory stats for debugging
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			log.Printf("Memory stats at crash: Alloc=%d KB, Sys=%d KB, NumGC=%d",
+				m.Alloc/1024, m.Sys/1024, m.NumGC)
+
+			// Return 500 error with crash details
+			http.Error(w, fmt.Sprintf("Visualization crashed: %v", panicErr), http.StatusInternalServerError)
+		}
+	}()
+
 	instanceID := chi.URLParam(r, "instanceID")
+	log.Printf("Starting visualization for instance: %s", instanceID)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -37,6 +57,7 @@ func (h *Handler) HandleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	format, layout, opts, err := h.parseOptions(r)
 	if err != nil {
+		log.Printf("Failed to parse options for %s: %v", instanceID, err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -44,6 +65,7 @@ func (h *Handler) HandleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
 	// Load instance
 	instance, err := h.storage.GetInstance(ctx, instanceID)
 	if err != nil {
+		log.Printf("Instance not found: %s, error: %v", instanceID, err)
 		http.Error(w, fmt.Sprintf("Instance not found: %v", err), http.StatusNotFound)
 		return
 	}
@@ -51,18 +73,38 @@ func (h *Handler) HandleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
 	// Load asset type and FSM definition
 	generator, err := h.loadGenerator(instance.AssetTypeName)
 	if err != nil {
+		log.Printf("Failed to load generator for %s (asset type: %s): %v",
+			instanceID, instance.AssetTypeName, err)
 		http.Error(w, fmt.Sprintf("Failed to load FSM definition: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Generate visualization
+	// Note: Global mutex is acquired at the Generator level to serialize all operations
+
+	// Generate visualization with enhanced error context and fallback
 	opts.Format = format
 	opts.Layout = layout
 	data, err := generator.GenerateInstance(ctx, instanceID, opts)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to generate visualization: %v", err), http.StatusInternalServerError)
+		// Log detailed error context
+		log.Printf("GraphViz generation failed for %s (format: %s, layout: %s): %v",
+			instanceID, format, layout, err)
+
+		// Log memory after failure
+		var mAfter runtime.MemStats
+		runtime.ReadMemStats(&mAfter)
+		log.Printf("Memory after failure: Alloc=%d KB, Sys=%d KB, NumGC=%d",
+			mAfter.Alloc/1024, mAfter.Sys/1024, mAfter.NumGC)
+
+		// GraphViz WASM error - no fallback, just return error
+		log.Printf("GraphViz WASM error for %s: %v", instanceID, err)
+		http.Error(w, fmt.Sprintf("Visualization failed (GraphViz WASM error): %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	// Log successful generation
+	log.Printf("Successfully generated %s visualization for %s (%d bytes)",
+		format, instanceID, len(data))
 
 	// Set appropriate headers
 	w.Header().Set("Content-Type", ContentType(format))
@@ -77,11 +119,30 @@ func (h *Handler) HandleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
 // HandleVisualizeDefinition generates visualization for FSM definition only
 // GET /api/v1/visualize/definition/:name
 func (h *Handler) HandleVisualizeDefinition(w http.ResponseWriter, r *http.Request) {
+	// Panic recovery with detailed logging
+	defer func() {
+		if panicErr := recover(); panicErr != nil {
+			stack := debug.Stack()
+			log.Printf("CRASH in HandleVisualizeDefinition: %v\nStack trace:\n%s", panicErr, string(stack))
+
+			// Log memory stats for debugging
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			log.Printf("Memory stats at crash: Alloc=%d KB, Sys=%d KB, NumGC=%d",
+				m.Alloc/1024, m.Sys/1024, m.NumGC)
+
+			// Return 500 error with crash details
+			http.Error(w, fmt.Sprintf("Definition visualization crashed: %v", panicErr), http.StatusInternalServerError)
+		}
+	}()
+
 	definitionName := chi.URLParam(r, "name")
+	log.Printf("Starting definition visualization for: %s", definitionName)
 
 	// Parse query parameters
 	format, layout, opts, err := h.parseOptions(r)
 	if err != nil {
+		log.Printf("Failed to parse options for definition %s: %v", definitionName, err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -94,19 +155,38 @@ func (h *Handler) HandleVisualizeDefinition(w http.ResponseWriter, r *http.Reque
 
 	generator, err := h.loadGenerator(assetTypePath)
 	if err != nil {
+		log.Printf("Failed to load generator for definition %s (path: %s): %v",
+			definitionName, assetTypePath, err)
 		http.Error(w, fmt.Sprintf("Failed to load FSM definition: %v", err), http.StatusNotFound)
 		return
 	}
 
-	// Generate visualization
+	// Note: Global mutex is acquired at the Generator level to serialize all operations
+
+	// Generate visualization with fallback
 	opts.Format = format
 	opts.Layout = layout
 	opts.HighlightCurrent = false // Definition only, no instance highlighting
 	data, err := generator.GenerateDefinition(opts)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to generate visualization: %v", err), http.StatusInternalServerError)
+		log.Printf("Definition GraphViz generation failed for %s (format: %s, layout: %s): %v",
+			definitionName, format, layout, err)
+
+		// Log memory after failure
+		var mAfter runtime.MemStats
+		runtime.ReadMemStats(&mAfter)
+		log.Printf("Memory after definition failure: Alloc=%d KB, Sys=%d KB, NumGC=%d",
+			mAfter.Alloc/1024, mAfter.Sys/1024, mAfter.NumGC)
+
+		// GraphViz WASM error - no fallback, just return error
+		log.Printf("GraphViz WASM error for definition %s: %v", definitionName, err)
+		http.Error(w, fmt.Sprintf("Definition visualization failed (GraphViz WASM error): %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	// Log successful generation
+	log.Printf("Successfully generated %s definition visualization for %s (%d bytes)",
+		format, definitionName, len(data))
 
 	// Set appropriate headers
 	w.Header().Set("Content-Type", ContentType(format))
@@ -118,7 +198,25 @@ func (h *Handler) HandleVisualizeDefinition(w http.ResponseWriter, r *http.Reque
 // HandleVisualizeHistory generates animated visualization of state progression
 // GET /api/v1/visualize/asset/:instanceID/history
 func (h *Handler) HandleVisualizeHistory(w http.ResponseWriter, r *http.Request) {
+	// Panic recovery with detailed logging
+	defer func() {
+		if panicErr := recover(); panicErr != nil {
+			stack := debug.Stack()
+			log.Printf("CRASH in HandleVisualizeHistory: %v\nStack trace:\n%s", panicErr, string(stack))
+
+			// Log memory stats for debugging
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			log.Printf("Memory stats at crash: Alloc=%d KB, Sys=%d KB, NumGC=%d",
+				m.Alloc/1024, m.Sys/1024, m.NumGC)
+
+			// Return 500 error with crash details
+			http.Error(w, fmt.Sprintf("History visualization crashed: %v", panicErr), http.StatusInternalServerError)
+		}
+	}()
+
 	instanceID := chi.URLParam(r, "instanceID")
+	log.Printf("Starting history visualization for instance: %s", instanceID)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -126,6 +224,7 @@ func (h *Handler) HandleVisualizeHistory(w http.ResponseWriter, r *http.Request)
 	// Parse query parameters
 	format, layout, opts, err := h.parseOptions(r)
 	if err != nil {
+		log.Printf("Failed to parse options for history %s: %v", instanceID, err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -136,6 +235,7 @@ func (h *Handler) HandleVisualizeHistory(w http.ResponseWriter, r *http.Request)
 	// Load instance
 	instance, err := h.storage.GetInstance(ctx, instanceID)
 	if err != nil {
+		log.Printf("Instance not found for history: %s, error: %v", instanceID, err)
 		http.Error(w, fmt.Sprintf("Instance not found: %v", err), http.StatusNotFound)
 		return
 	}
@@ -143,18 +243,37 @@ func (h *Handler) HandleVisualizeHistory(w http.ResponseWriter, r *http.Request)
 	// Load generator
 	generator, err := h.loadGenerator(instance.AssetTypeName)
 	if err != nil {
+		log.Printf("Failed to load generator for history %s (asset type: %s): %v",
+			instanceID, instance.AssetTypeName, err)
 		http.Error(w, fmt.Sprintf("Failed to load FSM definition: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Generate visualization with history
+	// Memory logging moved to generateGraphViz after global mutex is acquired
+
+	// Generate visualization with history and fallback
 	opts.Format = format
 	opts.Layout = layout
 	data, err := generator.GenerateInstance(ctx, instanceID, opts)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to generate visualization: %v", err), http.StatusInternalServerError)
+		log.Printf("History GraphViz generation failed for %s (format: %s, layout: %s): %v",
+			instanceID, format, layout, err)
+
+		// Log memory after failure
+		var mAfter runtime.MemStats
+		runtime.ReadMemStats(&mAfter)
+		log.Printf("Memory after history failure: Alloc=%d KB, Sys=%d KB, NumGC=%d",
+			mAfter.Alloc/1024, mAfter.Sys/1024, mAfter.NumGC)
+
+		// GraphViz WASM error - no fallback, just return error
+		log.Printf("GraphViz WASM error for history %s: %v", instanceID, err)
+		http.Error(w, fmt.Sprintf("History visualization failed (GraphViz WASM error): %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	// Log successful generation
+	log.Printf("Successfully generated %s history visualization for %s (%d bytes)",
+		format, instanceID, len(data))
 
 	// Set appropriate headers
 	w.Header().Set("Content-Type", ContentType(format))
@@ -234,7 +353,7 @@ func (h *Handler) parseOptions(r *http.Request) (Format, Layout, Options, error)
 	return format, layout, opts, nil
 }
 
-// loadGenerator loads a visualization generator for an asset type
+// loadGenerator loads a visualization generator for an asset type using global cache
 func (h *Handler) loadGenerator(assetTypeName string) (*Generator, error) {
 	// Resolve asset type path
 	assetTypePath := assetTypeName
@@ -242,18 +361,8 @@ func (h *Handler) loadGenerator(assetTypeName string) (*Generator, error) {
 		assetTypePath = filepath.Join(h.assetDir, assetTypePath)
 	}
 
-	// Load asset type
-	assetType, err := fsm.LoadAssetType(assetTypePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load asset type: %w", err)
-	}
-
-	// Load FSM definition
-	if err := assetType.LoadStateMachine(); err != nil {
-		return nil, fmt.Errorf("failed to load state machine: %w", err)
-	}
-
-	return NewGenerator(assetType.StateMachineRef, h.storage), nil
+	// Use global generator cache
+	return GetOrCreateGlobalGenerator(assetTypePath, h.storage)
 }
 
 // generateHTML generates the interactive HTML wrapper
@@ -505,7 +614,7 @@ func (h *Handler) generateHTML(instanceID string) string {
                 <select id="format">
                     <option value="svg" selected>SVG</option>
                     <option value="png">PNG</option>
-                    <option value="dot">DOT</option>
+                    <!-- DOT format removed - not useful for browsers -->
                     <option value="mermaid">Mermaid</option>
                     <option value="json">JSON</option>
                 </select>

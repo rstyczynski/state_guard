@@ -531,6 +531,376 @@ collectErrors:
 	}
 }
 
+// TestRapidVisualizationRenders tests GraphViz WASM memory handling under rapid sequential renders
+// This simulates timeline slider movements which previously caused WASM memory exhaustion
+func (c *CrashTestSuite) TestRapidVisualizationRenders(t *testing.T) {
+	// First, create a test asset with history
+	instanceID := fmt.Sprintf("rapid-viz-test-%d", time.Now().Unix())
+
+	// Create asset
+	createPayload := map[string]string{
+		"asset_type":  "simple_asset_type.yaml",
+		"instance_id": instanceID,
+	}
+	jsonPayload, _ := json.Marshal(createPayload)
+
+	req, err := http.NewRequest("POST", c.baseURL+"/api/v1/assets", bytes.NewReader(jsonPayload))
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to create asset: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("Failed to create asset: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	t.Logf("Created test asset: %s", instanceID)
+
+	// Transition through several states to build history
+	states := []string{"STARTING", "RUNNING", "STOPPING", "STOPPED", "STARTING", "RUNNING"}
+	for _, state := range states {
+		transitionPayload := map[string]string{"to_state": state}
+		jsonPayload, _ := json.Marshal(transitionPayload)
+
+		req, _ := http.NewRequest("POST", c.baseURL+"/api/v1/assets/"+instanceID+"/transition", bytes.NewReader(jsonPayload))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			t.Logf("Warning: transition to %s failed: %v", state, err)
+			continue
+		}
+		resp.Body.Close()
+		time.Sleep(50 * time.Millisecond) // Small delay between transitions
+	}
+
+	t.Logf("Asset %s has history, starting visualization stress tests", instanceID)
+
+	// Test scenarios
+	tests := []struct {
+		name        string
+		format      string
+		count       int
+		delay       time.Duration
+		expectError bool
+	}{
+		{
+			name:        "Rapid SVG renders (timeline slider simulation)",
+			format:      "svg",
+			count:       100,
+			delay:       50 * time.Millisecond,
+			expectError: false,
+		},
+		{
+			name:        "Rapid PNG renders (heavier load)",
+			format:      "png",
+			count:       50,
+			delay:       100 * time.Millisecond,
+			expectError: false,
+		},
+		{
+			name:        "Burst SVG renders (no delay)",
+			format:      "svg",
+			count:       50,
+			delay:       0,
+			expectError: false,
+		},
+		{
+			name:        "Mixed format renders",
+			format:      "mixed", // Special flag to alternate formats
+			count:       60,
+			delay:       50 * time.Millisecond,
+			expectError: false,
+		},
+	}
+
+	// States to cycle through for timeline slider simulation
+	highlightStates := []string{"CREATED", "STARTING", "RUNNING", "STOPPING", "STOPPED", "MAINTENANCE", "FAILED"}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			successCount := 0
+			errorCount := 0
+			wasmErrors := 0
+
+			t.Logf("Starting %s: %d requests with %v delay", tt.name, tt.count, tt.delay)
+
+			for i := 0; i < tt.count; i++ {
+				// Cycle through states to simulate timeline slider
+				highlightState := highlightStates[i%len(highlightStates)]
+
+				// Determine format
+				format := tt.format
+				if format == "mixed" {
+					if i%2 == 0 {
+						format = "svg"
+					} else {
+						format = "png"
+					}
+				}
+
+				// Build URL with highlight_state parameter (timeline slider)
+				url := fmt.Sprintf("%s/api/v1/visualize/asset/%s?format=%s&highlight_state=%s&highlight_current=true",
+					c.baseURL, instanceID, format, highlightState)
+
+				req, err := http.NewRequest("GET", url, nil)
+				if err != nil {
+					errorCount++
+					continue
+				}
+
+				resp, err := c.client.Do(req)
+				if err != nil {
+					errorCount++
+					t.Logf("Request %d failed: %v", i+1, err)
+					continue
+				}
+
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+
+				if resp.StatusCode == http.StatusOK {
+					// Check for WASM errors in response
+					if strings.Contains(string(body), "wasm error") ||
+						strings.Contains(string(body), "out of bounds memory access") {
+						wasmErrors++
+						errorCount++
+						t.Logf("WASM error detected in request %d", i+1)
+					} else {
+						successCount++
+					}
+				} else {
+					errorCount++
+					if strings.Contains(string(body), "wasm") {
+						wasmErrors++
+					}
+				}
+
+				// Delay between requests
+				if tt.delay > 0 {
+					time.Sleep(tt.delay)
+				}
+			}
+
+			t.Logf("Results for %s: %d successful, %d errors, %d WASM errors",
+				tt.name, successCount, errorCount, wasmErrors)
+
+			// CRITICAL: WASM errors indicate the memory fix isn't working
+			if wasmErrors > 0 {
+				t.Errorf("WASM memory errors detected: %d/%d requests failed with WASM errors", wasmErrors, tt.count)
+				t.Error("This indicates GraphViz memory cleanup is not working properly!")
+			}
+
+			// Calculate error rate
+			if successCount+errorCount > 0 {
+				errorRate := float64(errorCount) / float64(successCount+errorCount) * 100
+
+				// For visualization, we expect near-zero errors
+				if errorRate > 5 && !tt.expectError {
+					t.Errorf("High error rate: %.2f%% (%d errors out of %d requests)",
+						errorRate, errorCount, tt.count)
+				}
+			}
+		})
+	}
+
+	// Cleanup: delete the test asset
+	req, _ = http.NewRequest("DELETE", c.baseURL+"/api/v1/assets/"+instanceID, nil)
+	resp, err = c.client.Do(req)
+	if err == nil {
+		resp.Body.Close()
+	}
+
+	t.Logf("Cleaned up test asset: %s", instanceID)
+}
+
+// TestConcurrentVisualizationRequests tests GraphViz mutex protection under truly concurrent requests
+// This verifies that the mutex prevents WASM race conditions when multiple users view visualizations simultaneously
+func (c *CrashTestSuite) TestConcurrentVisualizationRequests(t *testing.T) {
+	// Create test asset with state transitions
+	instanceID := fmt.Sprintf("concurrent-viz-test-%d", time.Now().Unix())
+	createPayload := map[string]string{
+		"asset_type":  "simple_asset_type.yaml",
+		"instance_id": instanceID,
+	}
+
+	jsonPayload, err := json.Marshal(createPayload)
+	if err != nil {
+		t.Fatalf("Failed to marshal create payload: %v", err)
+	}
+
+	resp, err := c.client.Post(c.baseURL+"/api/v1/assets", "application/json", bytes.NewReader(jsonPayload))
+	if err != nil {
+		t.Fatalf("Failed to create asset: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("Expected status 201, got %d", resp.StatusCode)
+	}
+
+	t.Logf("Created test asset: %s", instanceID)
+
+	// Create some state history
+	states := []string{"STARTING", "RUNNING", "STOPPING", "STOPPED", "STARTING", "RUNNING"}
+	for _, state := range states {
+		transitionPayload := map[string]string{"new_state": state}
+		jsonPayload, _ := json.Marshal(transitionPayload)
+
+		resp, err := c.client.Post(
+			c.baseURL+"/api/v1/assets/"+instanceID+"/transition",
+			"application/json",
+			bytes.NewReader(jsonPayload),
+		)
+		if err == nil {
+			resp.Body.Close()
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Logf("Asset %s has history, starting concurrent visualization tests", instanceID)
+
+	// Define test scenarios
+	scenarios := []struct {
+		name        string
+		concurrency int
+		format      string
+	}{
+		{"Concurrent SVG renders", 50, "svg"},
+		{"Concurrent PNG renders", 30, "png"},
+		{"Mixed format concurrent", 40, "mixed"},
+	}
+
+	for _, scenario := range scenarios {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Logf("Starting %s: %d concurrent requests", scenario.name, scenario.concurrency)
+
+			var wg sync.WaitGroup
+			successChan := make(chan bool, scenario.concurrency)
+			errorChan := make(chan error, scenario.concurrency)
+			wasmErrorChan := make(chan bool, scenario.concurrency)
+
+			// Launch concurrent requests
+			for i := 0; i < scenario.concurrency; i++ {
+				wg.Add(1)
+				go func(idx int) {
+					defer wg.Done()
+
+					// Vary the highlight_state
+					highlightStates := []string{"CREATED", "STARTING", "RUNNING", "STOPPING", "STOPPED", "MAINTENANCE", "FAILED"}
+					highlightState := highlightStates[idx%len(highlightStates)]
+
+					// Determine format
+					format := scenario.format
+					if format == "mixed" {
+						if idx%2 == 0 {
+							format = "svg"
+						} else {
+							format = "png"
+						}
+					}
+
+					url := fmt.Sprintf("%s/api/v1/visualize/asset/%s?format=%s&highlight_state=%s&highlight_current=true",
+						c.baseURL, instanceID, format, highlightState)
+
+					resp, err := c.client.Get(url)
+					if err != nil {
+						errorChan <- fmt.Errorf("request %d failed: %w", idx, err)
+						return
+					}
+					defer resp.Body.Close()
+
+					body, err := io.ReadAll(resp.Body)
+					if err != nil {
+						errorChan <- fmt.Errorf("read body failed: %w", err)
+						return
+					}
+
+					// Check for WASM errors
+					bodyStr := string(body)
+					if strings.Contains(bodyStr, "wasm") || strings.Contains(bodyStr, "nil pointer") || strings.Contains(bodyStr, "out of bounds") {
+						wasmErrorChan <- true
+						errorChan <- fmt.Errorf("WASM error in response %d: %s", idx, bodyStr[:min(200, len(bodyStr))])
+						return
+					}
+
+					// Check for valid response based on format
+					if format == "svg" {
+						if !strings.Contains(bodyStr, "<?xml") {
+							errorChan <- fmt.Errorf("invalid SVG response %d", idx)
+							return
+						}
+					} else if format == "png" {
+						if len(body) < 100 || !bytes.HasPrefix(body, []byte{0x89, 0x50, 0x4E, 0x47}) {
+							errorChan <- fmt.Errorf("invalid PNG response %d", idx)
+							return
+						}
+					}
+
+					if resp.StatusCode != http.StatusOK {
+						errorChan <- fmt.Errorf("request %d: status %d", idx, resp.StatusCode)
+						return
+					}
+
+					successChan <- true
+				}(i)
+			}
+
+			// Wait for all requests to complete
+			wg.Wait()
+			close(successChan)
+			close(errorChan)
+			close(wasmErrorChan)
+
+			// Count results
+			successCount := len(successChan)
+			errorCount := len(errorChan)
+			wasmErrorCount := len(wasmErrorChan)
+
+			t.Logf("Results for %s: %d successful, %d errors, %d WASM errors",
+				scenario.name, successCount, errorCount, wasmErrorCount)
+
+			// Report all errors
+			for err := range errorChan {
+				t.Logf("  Error: %v", err)
+			}
+
+			// Fail if WASM errors occurred (mutex should prevent these)
+			if wasmErrorCount > 0 {
+				t.Errorf("CRITICAL: %d WASM errors detected - mutex is not working!", wasmErrorCount)
+			}
+
+			// Most requests should succeed
+			if successCount < scenario.concurrency*8/10 {
+				t.Errorf("Too many failures: %d/%d succeeded", successCount, scenario.concurrency)
+			}
+		})
+	}
+
+	// Clean up
+	req, _ := http.NewRequest("DELETE", c.baseURL+"/api/v1/assets/"+instanceID, nil)
+	resp, err = c.client.Do(req)
+	if err == nil {
+		resp.Body.Close()
+	}
+
+	t.Logf("Cleaned up test asset: %s", instanceID)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // Wrapper test functions to invoke the suite methods
 
 // TestPerformanceUnderLoadWrapper runs the performance under load tests
@@ -567,4 +937,10 @@ func TestSlowLorisWrapper(t *testing.T) {
 func TestResourceExhaustionWrapper(t *testing.T) {
 	suite := NewCrashTestSuite("http://localhost:8080")
 	suite.TestResourceExhaustion(t)
+}
+
+// TestRapidVisualizationRendersWrapper runs the rapid visualization render tests
+func TestRapidVisualizationRendersWrapper(t *testing.T) {
+	suite := NewCrashTestSuite("http://localhost:8080")
+	suite.TestRapidVisualizationRenders(t)
 }

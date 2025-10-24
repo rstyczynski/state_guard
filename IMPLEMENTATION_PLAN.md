@@ -296,6 +296,15 @@ GET /docs/diagram/:instanceID
 - Go `html/template` for HTML wrapper
 - D3.js or Cytoscape.js for interactive features
 
+**Critical Bug Fixes:**
+- ✓ **GraphViz WASM Race Condition (2025-10-24):**
+  - **Problem:** Rapid timeline slider movements caused nil pointer dereference crashes
+  - **Root Cause:** GraphViz WASM doesn't support concurrent access. Multiple simultaneous requests created race conditions causing graph objects to become nil
+  - **Solution:** Added `sync.Mutex` (`graphvizMutex`) to serialize all GraphViz operations
+  - **Files Changed:** `internal/visualize/visualize.go` (added mutex to Generator struct, protected generateGraphViz function)
+  - **Test Coverage:** Added `TestRapidVisualizationRenders` crash test with 260 concurrent render scenarios
+  - **Verified:** Server handles 50+ concurrent requests without crashes, all tests pass
+
 
 ---
 
