@@ -329,6 +329,92 @@ GET /docs/diagram/:instanceID
     - ✅ Process restart - only reliable solution
 
 
+### Phase 2.5: Split API to sg_api and sg_web
+**Status:** ✅ **Completed**
+**Dependencies:** Phase 2.2 (REST API), Phase 2.3 (Interactive Console)
+
+**Objective:** Separate visualization (WASM-based) from data API to isolate memory leaks
+
+**Architecture Implemented:**
+
+```
+sg_web (port 3000)                     sg_api (port 8080)
+├─ /api/v1/visualize/*                 ├─ /api/v1/assets/*
+│  ├─ SVG/PNG rendering                │  ├─ Create asset
+│  ├─ GraphViz WASM                    │  ├─ Get asset
+│  └─ Memory leak isolation            │  ├─ Transition state
+├─ /docs/diagram/{id}                  │  ├─ Get history
+│  └─ Interactive HTML UI              │  └─ Delete asset
+├─ HTTP Storage Client                 ├─ SQLite Storage
+│  └─ Proxies to sg_api                │  └─ Direct database access
+└─ Flags: --port, --api-url            └─ Flags: --port, --db, --asset-dir
+```
+
+**Features Implemented:**
+
+1. ✅ **All visualization features moved to sg_web:**
+   - ✅ Zoom controls (+/-, reset)
+   - ✅ Timeline slider (navigate history)
+   - ✅ Show History (blue transition paths)
+   - ✅ Indicate Next States (yellow highlighting)
+   - ✅ Highlight Current State (green highlighting)
+
+2. ✅ **WASM Memory Leak Isolation:**
+   - GraphViz WASM runs only in sg_web process
+   - sg_api unaffected by WASM memory leaks
+   - sg_web can restart independently
+   - Data operations remain stable
+
+3. ✅ **HTTP Storage Client:**
+   - `internal/web/http_storage.go` - Implements Storage interface
+   - Proxies data requests to sg_api via HTTP
+   - Read-only operations for visualization
+   - No direct database dependency in proxy mode
+
+4. ✅ **JavaScript API Integration:**
+   - Diagram HTML receives `apiURL` parameter
+   - All data fetches (assets, history, transitions) call sg_api
+   - Visualization renders call sg_web (same server)
+   - Clean separation of concerns
+
+5. ✅ **Dual Operating Modes:**
+   - **Proxy mode (recommended):** `--port --api-url` (no DB needed)
+   - **Standalone mode:** `--port --db --asset-dir` (direct DB access)
+
+**Changes Made:**
+
+- `cmd/sg_web/main.go` - Added HTTP client support, dual mode operation
+- `internal/web/server.go` - Added visualization routes, storage dependency
+- `internal/web/handlers.go` - Added visualization handler delegation
+- `internal/web/http_storage.go` - **NEW** - HTTP storage client
+- `internal/visualize/handlers.go` - Added apiURL parameter injection
+- `internal/web/diagram.go` - **REMOVED** (functionality in visualize package)
+
+**Usage:**
+
+```bash
+# Production setup (recommended)
+./bin/sg_api --port 8080 --db fsm.db --asset-dir examples
+./bin/sg_web --port 3000 --api-url http://localhost:8080
+
+# Standalone (for testing)
+./bin/sg_web --port 3000 --db fsm.db --asset-dir examples
+```
+
+**Testing Status:**
+- ✅ Both binaries build successfully
+- ✅ sg_web runs without database (proxy mode)
+- ✅ sg_web serves all 5 visualization features
+- ✅ JavaScript correctly calls sg_api for data
+- ⏳ Tests update pending (functional, perf, crash)
+
+**Documentation Updated:**
+- ✅ USAGE.md - Added architecture diagram and sg_web section
+- ✅ Commit message - Comprehensive architecture documentation
+- ⏳ Test documentation update pending
+
+
+
 ---
 
 ## Phase 3: Security & Authentication

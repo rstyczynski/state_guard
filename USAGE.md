@@ -2,10 +2,51 @@
 
 ## Overview
 
-This guide explains how to use the FSM (Finite State Machine) system to manage assets through state transitions. The system supports two interfaces:
+This guide explains how to use the FSM (Finite State Machine) system to manage assets through state transitions. The system provides three main components:
 
-1. **REST API** - Production-ready HTTP API with Swagger documentation
-2. **CLI** - Interactive command-line interface for testing and development
+1. **sg_api** - REST API server for data operations (port 8080)
+2. **sg_web** - Web UI server for visualization (port 3000)
+3. **fsm** - Interactive CLI for testing and development
+
+## Architecture
+
+The system is split into two separate servers for WASM memory leak isolation:
+
+```
+┌─────────────────────┐
+│   Browser/Client    │
+│                     │
+└──────────┬──────────┘
+           │
+           ├──────────► Data Requests
+           │            (assets, transitions, history)
+           │
+           ▼
+┌─────────────────────┐         HTTP Proxy
+│   sg_api:8080       │ ◄──────────────────────┐
+│                     │                        │
+│ • /api/v1/assets/*  │                        │
+│ • SQLite Storage    │                        │
+│ • Data Operations   │                        │
+└─────────────────────┘                        │
+                                               │
+           ┌───────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────┐         Diagram Rendering
+│   sg_web:3000       │ ◄──────────────────────
+│                     │
+│ • /api/v1/visualize │
+│ • WASM Rendering    │
+│ • Interactive UI    │
+└─────────────────────┘
+```
+
+**Benefits of this architecture:**
+- **WASM Isolation**: Memory leaks from GraphViz WASM confined to sg_web process
+- **Independent Restart**: sg_web can restart without affecting data operations
+- **Clear Separation**: Data (sg_api) vs. Visualization (sg_web)
+- **Scalability**: Can run multiple sg_web instances for load balancing
 
 ## Core Concepts
 
@@ -29,33 +70,51 @@ Asset Type YAML → State Machine + Webhooks
 
 ---
 
-## 1. REST API Usage (Recommended)
+## 1. Getting Started (Production Setup)
 
-The REST API is the primary interface for production deployments.
+For production use, you need both servers running:
 
-### Starting the API Server
+### Quick Start
+
+```bash
+# Terminal 1: Start API server (data operations)
+./bin/sg_api --port 8080 --db fsm.db --asset-dir examples
+
+# Terminal 2: Start Web UI server (visualization)
+./bin/sg_web --port 3000 --api-url http://localhost:8080
+```
+
+Then open your browser:
+- **Web UI**: http://localhost:3000/
+- **API Docs**: http://localhost:8080/docs
+- **Diagram Viewer**: http://localhost:3000/docs/diagram/{instanceID}
+
+---
+
+## 2. sg_api - REST API Server
+
+The API server handles all data operations: creating assets, state transitions, and persistence.
+
+### Starting sg_api
 
 #### Option 1: Using Pre-built Binary
 
 ```bash
-# Start with defaults (port 8080, fsm.db in current dir, examples/ directory)
-./bin/api
+# Start with defaults
+./bin/sg_api
 
-# Start with database in data directory (recommended)
-./bin/api --db data/demo.db
-
-# Start with all custom settings
-./bin/api --port 8080 --db data/demo.db --asset-dir examples
+# Start with custom settings (recommended)
+./bin/sg_api --port 8080 --db data/demo.db --asset-dir examples
 ```
 
 #### Option 2: Using Go Run
 
 ```bash
 # Development mode
-go run cmd/api/main.go
+go run cmd/sg_api/main.go
 
 # With custom settings
-go run cmd/api/main.go --port 8080 --db data/demo.db --asset-dir examples
+go run cmd/sg_api/main.go --port 8080 --db data/demo.db --asset-dir examples
 ```
 
 #### Command-Line Flags
@@ -245,7 +304,117 @@ curl -X DELETE http://localhost:8080/api/v1/assets/web1
 
 ---
 
-## 2. CLI Usage (Interactive Testing)
+## 3. sg_web - Web Visualization Server
+
+The Web UI server provides interactive diagram visualization with all features isolated from the data API.
+
+### Starting sg_web
+
+#### Recommended: Proxy Mode (WASM Isolation)
+
+```bash
+# Start sg_web pointing to sg_api
+./bin/sg_web --port 3000 --api-url http://localhost:8080
+```
+
+**Features:**
+- ✅ No database connection needed
+- ✅ WASM memory leaks isolated to sg_web process
+- ✅ Can restart independently without affecting data
+- ✅ Recommended for production
+
+#### Optional: Standalone Mode
+
+```bash
+# Start sg_web with direct database access
+./bin/sg_web --port 3000 --db fsm.db --asset-dir examples
+```
+
+**Use when:**
+- Testing locally without sg_api
+- Simple deployments
+
+#### Command-Line Flags
+
+- `--port` - HTTP server port (default: 3000)
+- `--api-url` - URL of sg_api server (default: http://localhost:8080)
+- `--db` - Path to SQLite database (optional, for standalone mode)
+- `--asset-dir` - Directory containing asset type YAML files (optional, for standalone mode)
+- `--version` - Show version and exit
+
+### Visualization Features
+
+sg_web provides interactive FSM diagrams with the following features:
+
+#### 1. **Zoom Controls**
+- Zoom in/out with +/- buttons
+- Reset zoom to 100%
+- Mouse wheel zoom support
+
+#### 2. **Timeline Slider**
+- Navigate through state history
+- See state transitions over time
+- Timestamps for each transition
+
+#### 3. **Show History**
+- Display historical state progression
+- Blue edges show transition path
+- Timeline integration
+
+#### 4. **Indicate Next States**
+- Yellow highlighting for available next states
+- Shows valid transitions from current state
+- Interactive state clicking
+
+#### 5. **Highlight Current State**
+- Green highlighting for current state
+- Always prioritized over other highlights
+- Toggleable via checkbox
+
+### Accessing Visualizations
+
+```bash
+# Home page
+http://localhost:3000/
+
+# Interactive diagram viewer for an asset
+http://localhost:3000/docs/diagram/{instanceID}
+
+# Example
+http://localhost:3000/docs/diagram/web1
+```
+
+### Visualization API Endpoints
+
+These endpoints are served by sg_web for rendering diagrams:
+
+```bash
+# Visualize an asset's current state
+http://localhost:3000/api/v1/visualize/asset/{instanceID}?format=svg
+
+# Visualize with history
+http://localhost:3000/api/v1/visualize/asset/{instanceID}/history?format=svg
+
+# Visualize state machine definition
+http://localhost:3000/api/v1/visualize/definition/{name}?format=svg
+```
+
+**Supported formats:**
+- `svg` - Scalable Vector Graphics (default, interactive)
+- `png` - Portable Network Graphics (image)
+- `mermaid` - Mermaid diagram syntax
+- `json` - JSON representation
+
+**Query parameters:**
+- `format` - Output format (svg/png/mermaid/json)
+- `layout` - Diagram layout (horizontal/vertical)
+- `history` - Show state history (true/false)
+- `available` - Indicate next states (true/false)
+- `highlight_current` - Highlight current state (true/false)
+
+---
+
+## 4. CLI Usage (Interactive Testing)
 
 The CLI provides an interactive interface for testing and development.
 
