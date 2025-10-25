@@ -139,8 +139,9 @@ func (s *Server) getOrCreateDispatcher(assetTypePath string, assetType *fsm.Asse
 	return disp, nil
 }
 
-// Shutdown gracefully shuts down the server
-func (s *Server) Shutdown(ctx context.Context) error {
+
+// ShutdownWithContext gracefully shuts down the server with provided context
+func (s *Server) ShutdownWithContext(ctx context.Context) error {
 	// Close all webhook dispatchers
 	s.dispMu.Lock()
 	for assetType, disp := range s.dispatchers {
@@ -157,6 +158,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return s.httpServer.Shutdown(ctx)
 	}
 	return nil
+}
+
+// Shutdown gracefully shuts down the server (convenience wrapper)
+func (s *Server) Shutdown() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return s.ShutdownWithContext(ctx)
 }
 
 // corsMiddleware adds CORS headers
