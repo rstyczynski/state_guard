@@ -13,6 +13,25 @@ type FSMInstance struct {
 	CurrentState   string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+
+	// FSMDefinition is a transient field (not stored in DB) that holds the FSM definition
+	// for visualization purposes. It's populated when fetched from the API.
+	FSMDefinition  *FSMDefinition `json:"fsm_definition,omitempty"`
+}
+
+// FSMDefinition represents an FSM definition (transient, not stored in DB)
+type FSMDefinition struct {
+	Name        string
+	Initial     string
+	Final       []string
+	States      []string
+	Transitions []FSMTransition
+}
+
+// FSMTransition represents a transition in FSM definition
+type FSMTransition struct {
+	From string
+	To   string
 }
 
 // StateTransition represents a state change event (prepared for Phase 2.1 History)

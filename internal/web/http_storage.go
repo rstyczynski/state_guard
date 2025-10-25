@@ -48,6 +48,34 @@ func (h *HTTPClient) Close() error {
 	return nil
 }
 
+// assetAPIResponse matches the API response format for assets
+type assetAPIResponse struct {
+	ID                   string                     `json:"id"`
+	AssetType            string                     `json:"asset_type"`
+	DefinitionName       string                     `json:"definition_name"`
+	CurrentState         string                     `json:"current_state"`
+	AvailableTransitions []string                   `json:"available_transitions"`
+	IsFinalState         bool                       `json:"is_final_state"`
+	CreatedAt            time.Time                  `json:"created_at"`
+	UpdatedAt            time.Time                  `json:"updated_at"`
+	FSMDefinition        *fsmDefinitionAPIResponse  `json:"fsm_definition,omitempty"`
+}
+
+// fsmDefinitionAPIResponse matches the FSM definition in API response
+type fsmDefinitionAPIResponse struct {
+	Name        string                     `json:"name"`
+	Initial     string                     `json:"initial"`
+	Final       []string                   `json:"final"`
+	States      []string                   `json:"states"`
+	Transitions []fsmTransitionAPIResponse `json:"transitions"`
+}
+
+// fsmTransitionAPIResponse matches the transition format in API response
+type fsmTransitionAPIResponse struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
 // GetInstance fetches an asset instance via HTTP
 func (h *HTTPClient) GetInstance(ctx context.Context, instanceID string) (*storage.FSMInstance, error) {
 	url := fmt.Sprintf("%s/api/v1/assets/%s", h.baseURL, instanceID)
@@ -72,12 +100,39 @@ func (h *HTTPClient) GetInstance(ctx context.Context, instanceID string) (*stora
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
-	var instance storage.FSMInstance
-	if err := json.NewDecoder(resp.Body).Decode(&instance); err != nil {
+	var apiResp assetAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &instance, nil
+	// Convert API response to storage.FSMInstance
+	instance := &storage.FSMInstance{
+		ID:             apiResp.ID,
+		DefinitionName: apiResp.DefinitionName,
+		AssetTypeName:  apiResp.AssetType,
+		CurrentState:   apiResp.CurrentState,
+		CreatedAt:      apiResp.CreatedAt,
+		UpdatedAt:      apiResp.UpdatedAt,
+	}
+
+	// Convert FSM definition if present
+	if apiResp.FSMDefinition != nil {
+		instance.FSMDefinition = &storage.FSMDefinition{
+			Name:        apiResp.FSMDefinition.Name,
+			Initial:     apiResp.FSMDefinition.Initial,
+			Final:       apiResp.FSMDefinition.Final,
+			States:      apiResp.FSMDefinition.States,
+			Transitions: make([]storage.FSMTransition, len(apiResp.FSMDefinition.Transitions)),
+		}
+		for i, t := range apiResp.FSMDefinition.Transitions {
+			instance.FSMDefinition.Transitions[i] = storage.FSMTransition{
+				From: t.From,
+				To:   t.To,
+			}
+		}
+	}
+
+	return instance, nil
 }
 
 // UpdateState is not supported in HTTP client (read-only for visualization)

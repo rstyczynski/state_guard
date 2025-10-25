@@ -25,14 +25,30 @@ func (c *CreateAssetRequest) Bind(r *http.Request) error {
 
 // AssetResponse represents an asset instance in API responses
 type AssetResponse struct {
-	ID                   string    `json:"id"`
-	AssetType            string    `json:"asset_type"`
-	DefinitionName       string    `json:"definition_name"`
-	CurrentState         string    `json:"current_state"`
-	AvailableTransitions []string  `json:"available_transitions"`
-	IsFinalState         bool      `json:"is_final_state"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	ID                   string                 `json:"id"`
+	AssetType            string                 `json:"asset_type"`
+	DefinitionName       string                 `json:"definition_name"`
+	CurrentState         string                 `json:"current_state"`
+	AvailableTransitions []string               `json:"available_transitions"`
+	IsFinalState         bool                   `json:"is_final_state"`
+	CreatedAt            time.Time              `json:"created_at"`
+	UpdatedAt            time.Time              `json:"updated_at"`
+	FSMDefinition        *FSMDefinitionResponse `json:"fsm_definition,omitempty"` // Include FSM definition for visualization
+}
+
+// FSMDefinitionResponse represents an FSM definition in API responses
+type FSMDefinitionResponse struct {
+	Name    string   `json:"name"`
+	Initial string   `json:"initial"`
+	Final   []string `json:"final"`
+	States  []string `json:"states"`
+	Transitions []FSMTransitionResponse `json:"transitions"`
+}
+
+// FSMTransitionResponse represents a transition in FSM definition
+type FSMTransitionResponse struct {
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 // TransitionRequest represents a state transition request

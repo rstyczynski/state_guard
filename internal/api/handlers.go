@@ -309,6 +309,22 @@ func (s *Server) buildAssetResponse(ctx context.Context, instance *storage.FSMIn
 					resp.AvailableTransitions = f.AvailableTransitions()
 					resp.IsFinalState = f.IsFinalState()
 				}
+
+				// Include FSM definition for visualization in sg_web
+				sm := assetType.StateMachineRef
+				resp.FSMDefinition = &FSMDefinitionResponse{
+					Name:    sm.Name,
+					Initial: sm.Initial,
+					Final:   sm.Final,
+					States:  sm.States,
+					Transitions: make([]FSMTransitionResponse, len(sm.Transitions)),
+				}
+				for i, t := range sm.Transitions {
+					resp.FSMDefinition.Transitions[i] = FSMTransitionResponse{
+						From: t.From,
+						To:   t.To,
+					}
+				}
 			}
 		}
 	}

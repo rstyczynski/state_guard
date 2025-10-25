@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rstyczynski/fsm_v2/internal/fsm"
 	"github.com/rstyczynski/fsm_v2/internal/storage"
 )
 
@@ -72,8 +73,8 @@ func (h *Handler) HandleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load asset type and FSM definition
-	generator, err := h.loadGenerator(instance.AssetTypeName)
+	// Load generator from instance (uses FSM definition from API if available)
+	generator, err := h.loadGeneratorFromInstance(instance)
 	if err != nil {
 		log.Printf("Failed to load generator for %s (asset type: %s): %v",
 			instanceID, instance.AssetTypeName, err)
@@ -149,16 +150,10 @@ func (h *Handler) HandleVisualizeDefinition(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Load asset type by name
-	assetTypePath := definitionName
-	if !filepath.IsAbs(assetTypePath) && h.assetDir != "" {
-		assetTypePath = filepath.Join(h.assetDir, assetTypePath)
-	}
-
-	generator, err := h.loadGenerator(assetTypePath)
+	// Load generator from file path for definition visualization
+	generator, err := h.loadGeneratorFromFile(definitionName)
 	if err != nil {
-		log.Printf("Failed to load generator for definition %s (path: %s): %v",
-			definitionName, assetTypePath, err)
+		log.Printf("Failed to load generator for definition %s: %v", definitionName, err)
 		http.Error(w, fmt.Sprintf("Failed to load FSM definition: %v", err), http.StatusNotFound)
 		return
 	}
@@ -242,8 +237,8 @@ func (h *Handler) HandleVisualizeHistory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Load generator
-	generator, err := h.loadGenerator(instance.AssetTypeName)
+	// Load generator from instance (uses FSM definition from API if available)
+	generator, err := h.loadGeneratorFromInstance(instance)
 	if err != nil {
 		log.Printf("Failed to load generator for history %s (asset type: %s): %v",
 			instanceID, instance.AssetTypeName, err)
@@ -356,8 +351,22 @@ func (h *Handler) parseOptions(r *http.Request) (Format, Layout, Options, error)
 	return format, layout, opts, nil
 }
 
-// loadGenerator loads a visualization generator for an asset type using global cache
-func (h *Handler) loadGenerator(assetTypeName string) (*Generator, error) {
+// loadGenerator loads a visualization generator for an asset type
+// If the instance contains FSM definition, use it directly (for sg_web HTTP mode)
+// Otherwise, load from file path (for direct SQLite mode)
+func (h *Handler) loadGeneratorFromInstance(instance *storage.FSMInstance) (*Generator, error) {
+	// If instance has FSM definition, create generator from it
+	if instance.FSMDefinition != nil {
+		def := h.convertToFSMDefinition(instance.FSMDefinition)
+		return NewGenerator(def, h.storage), nil
+	}
+
+	// Fallback: load from file path (for direct SQLite mode in sg_web)
+	return h.loadGeneratorFromFile(instance.AssetTypeName)
+}
+
+// loadGeneratorFromFile loads a generator from an asset type file path
+func (h *Handler) loadGeneratorFromFile(assetTypeName string) (*Generator, error) {
 	// Resolve asset type path
 	assetTypePath := assetTypeName
 	if !filepath.IsAbs(assetTypePath) && h.assetDir != "" {
@@ -366,6 +375,27 @@ func (h *Handler) loadGenerator(assetTypeName string) (*Generator, error) {
 
 	// Use global generator cache
 	return GetOrCreateGlobalGenerator(assetTypePath, h.storage)
+}
+
+// convertToFSMDefinition converts storage.FSMDefinition to fsm.Definition
+func (h *Handler) convertToFSMDefinition(storageDef *storage.FSMDefinition) *fsm.Definition {
+	def := &fsm.Definition{
+		Version:     1,
+		Name:        storageDef.Name,
+		Initial:     storageDef.Initial,
+		Final:       storageDef.Final,
+		States:      storageDef.States,
+		Transitions: make([]fsm.Transition, len(storageDef.Transitions)),
+	}
+
+	for i, t := range storageDef.Transitions {
+		def.Transitions[i] = fsm.Transition{
+			From: t.From,
+			To:   t.To,
+		}
+	}
+
+	return def
 }
 
 // generateHTML generates the interactive HTML wrapper
