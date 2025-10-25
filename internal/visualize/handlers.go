@@ -1141,5 +1141,5 @@ func (h *Handler) generateHTML(instanceID string, apiURL string) string {
         });
     </script>
 </body>
-</html>`, instanceID, instanceID, apiURL)
+</html>`, instanceID, instanceID, instanceID, apiURL)
 }
