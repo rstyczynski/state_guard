@@ -14,12 +14,12 @@ import (
 // Server represents the Web UI server
 type Server struct {
 	httpServer *http.Server
-	apiURL     string // URL of the sg_api backend (optional, for hybrid mode)
 	storage    storage.Storage
 	assetDir   string
+	apiURL     string // URL of the sg_api backend
 }
 
-// NewServer creates a new Web UI server with storage and asset directory
+// NewServer creates a new Web UI server
 func NewServer(store storage.Storage, assetDir string, apiURL string) *Server {
 	return &Server{
 		storage:  store,
@@ -50,7 +50,7 @@ func (s *Server) Start(addr string) error {
 	// Health check
 	r.Get("/health", s.handleHealth)
 
-	// Visualization routes (moved from sg_api)
+	// Visualization routes (WASM isolation - rendered in sg_web process)
 	r.Route("/api/v1/visualize", func(r chi.Router) {
 		// Definition visualization
 		r.Get("/definition/{name}", s.handleVisualizeDefinition)

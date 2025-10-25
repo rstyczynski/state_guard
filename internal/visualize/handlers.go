@@ -18,13 +18,15 @@ import (
 type Handler struct {
 	storage  storage.Storage
 	assetDir string
+	apiURL   string // URL of the API server for data operations
 }
 
 // NewHandler creates a new visualization handler
-func NewHandler(store storage.Storage, assetDir string) *Handler {
+func NewHandler(store storage.Storage, assetDir string, apiURL string) *Handler {
 	return &Handler{
 		storage:  store,
 		assetDir: assetDir,
+		apiURL:   apiURL,
 	}
 }
 
@@ -288,7 +290,8 @@ func (h *Handler) HandleDiagramPage(w http.ResponseWriter, r *http.Request) {
 	instanceID := chi.URLParam(r, "instanceID")
 
 	// Generate HTML with embedded SVG viewer
-	html := h.generateHTML(instanceID)
+	// Pass apiURL so JavaScript knows where to call for data
+	html := h.generateHTML(instanceID, h.apiURL)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -366,7 +369,7 @@ func (h *Handler) loadGenerator(assetTypeName string) (*Generator, error) {
 }
 
 // generateHTML generates the interactive HTML wrapper
-func (h *Handler) generateHTML(instanceID string) string {
+func (h *Handler) generateHTML(instanceID string, apiURL string) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -687,6 +690,7 @@ func (h *Handler) generateHTML(instanceID string) string {
 
     <script>
         const instanceID = '%s';
+        const apiURL = '%s'; // API server URL for data operations
         let currentAsset = null;
         let historyData = [];
         let zoomLevel = 1;
@@ -699,7 +703,7 @@ func (h *Handler) generateHTML(instanceID string) string {
 
         async function loadAssetData() {
             try {
-                const response = await fetch('/api/v1/assets/' + instanceID);
+                const response = await fetch(apiURL + '/api/v1/assets/' + instanceID);
                 if (response.ok) {
                     currentAsset = await response.json();
                 }
@@ -710,7 +714,7 @@ func (h *Handler) generateHTML(instanceID string) string {
 
         async function loadHistoryData() {
             try {
-                const response = await fetch('/api/v1/assets/' + instanceID + '/history');
+                const response = await fetch(apiURL + '/api/v1/assets/' + instanceID + '/history');
                 if (response.ok) {
                     const data = await response.json();
                     const transitions = (data.transitions || []).reverse();
@@ -938,7 +942,7 @@ func (h *Handler) generateHTML(instanceID string) string {
 
         async function transitionToState(toState) {
             try {
-                const response = await fetch('/api/v1/assets/' + instanceID + '/transition', {
+                const response = await fetch(apiURL + '/api/v1/assets/' + instanceID + '/transition', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ to_state: toState })
@@ -1137,5 +1141,5 @@ func (h *Handler) generateHTML(instanceID string) string {
         });
     </script>
 </body>
-</html>`, instanceID, instanceID, instanceID)
+</html>`, instanceID, instanceID, apiURL)
 }
