@@ -64,8 +64,11 @@ func main() {
 	addr := ":" + *port
 	log.Printf("Starting State Guard API Server (sg_api) on %s", addr)
 	log.Printf("API endpoints available at: http://localhost%s/api/v1/", addr)
-	log.Printf("NOTE: This server includes ALL routes (API + HTML docs)")
-	log.Printf("      Use sg_web for Web UI to separate concerns in production")
+	log.Printf("API documentation: http://localhost%s/docs", addr)
+	log.Printf("")
+	log.Printf("NOTE: This is the DATA API server for asset management")
+	log.Printf("      For Web UI and visualization features, use sg_web")
+	log.Printf("      Example: ./bin/sg_web --port 3000 --db %s --asset-dir %s", *dbPath, *assetDir)
 
 	if err := server.Start(addr); err != nil {
 		log.Fatalf("Server error: %v", err)

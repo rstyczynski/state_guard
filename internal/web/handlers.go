@@ -3,7 +3,7 @@ package web
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/rstyczynski/fsm_v2/internal/visualize"
 )
 
 // handleOpenAPISpec serves the OpenAPI specification
@@ -52,14 +52,26 @@ func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
-// handleDiagramPage serves the interactive diagram viewer
+// handleDiagramPage delegates to visualization handler for full interactive diagram
 func (s *Server) handleDiagramPage(w http.ResponseWriter, r *http.Request) {
-	instanceID := chi.URLParam(r, "instanceID")
+	handler := visualize.NewHandler(s.storage, s.assetDir)
+	handler.HandleDiagramPage(w, r)
+}
 
-	// Generate HTML with embedded diagram viewer that calls the API backend
-	html := s.generateDiagramHTML(instanceID)
+// handleVisualizeAsset delegates to visualization handler
+func (s *Server) handleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
+	handler := visualize.NewHandler(s.storage, s.assetDir)
+	handler.HandleVisualizeAsset(w, r)
+}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(html))
+// handleVisualizeDefinition delegates to visualization handler
+func (s *Server) handleVisualizeDefinition(w http.ResponseWriter, r *http.Request) {
+	handler := visualize.NewHandler(s.storage, s.assetDir)
+	handler.HandleVisualizeDefinition(w, r)
+}
+
+// handleVisualizeHistory delegates to visualization handler
+func (s *Server) handleVisualizeHistory(w http.ResponseWriter, r *http.Request) {
+	handler := visualize.NewHandler(s.storage, s.assetDir)
+	handler.HandleVisualizeHistory(w, r)
 }

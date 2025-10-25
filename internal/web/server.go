@@ -8,18 +8,23 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/rstyczynski/fsm_v2/internal/storage"
 )
 
 // Server represents the Web UI server
 type Server struct {
 	httpServer *http.Server
-	apiURL     string // URL of the sg_api backend
+	apiURL     string // URL of the sg_api backend (optional, for hybrid mode)
+	storage    storage.Storage
+	assetDir   string
 }
 
-// NewServer creates a new Web UI server
-func NewServer(apiURL string) *Server {
+// NewServer creates a new Web UI server with storage and asset directory
+func NewServer(store storage.Storage, assetDir string, apiURL string) *Server {
 	return &Server{
-		apiURL: apiURL,
+		storage:  store,
+		assetDir: assetDir,
+		apiURL:   apiURL,
 	}
 }
 
@@ -44,6 +49,16 @@ func (s *Server) Start(addr string) error {
 
 	// Health check
 	r.Get("/health", s.handleHealth)
+
+	// Visualization routes (moved from sg_api)
+	r.Route("/api/v1/visualize", func(r chi.Router) {
+		// Definition visualization
+		r.Get("/definition/{name}", s.handleVisualizeDefinition)
+
+		// Instance visualization
+		r.Get("/asset/{instanceID}", s.handleVisualizeAsset)
+		r.Get("/asset/{instanceID}/history", s.handleVisualizeHistory)
+	})
 
 	s.httpServer = &http.Server{
 		Addr:         addr,

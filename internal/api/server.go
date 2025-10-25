@@ -13,7 +13,6 @@ import (
 	"github.com/go-chi/render"
 	"github.com/rstyczynski/fsm_v2/internal/fsm"
 	"github.com/rstyczynski/fsm_v2/internal/storage"
-	"github.com/rstyczynski/fsm_v2/internal/visualize"
 	"github.com/rstyczynski/fsm_v2/internal/webhook"
 )
 
@@ -63,9 +62,6 @@ func (s *Server) Start(addr string) error {
 		// API documentation page
 		r.Get("/docs", s.handleAPIDocs)
 		r.Get("/", s.handleAPIDocs) // Root redirects to docs
-
-		// Interactive diagram viewer
-		r.Get("/docs/diagram/{instanceID}", s.handleDiagramPage)
 	})
 
 	// API routes
@@ -84,16 +80,6 @@ func (s *Server) Start(addr string) error {
 				r.Post("/transition", s.handleTransition)
 				r.Get("/history", s.handleHistory)
 			})
-		})
-
-		// Visualization routes
-		r.Route("/visualize", func(r chi.Router) {
-			// Definition visualization
-			r.Get("/definition/{name}", s.handleVisualizeDefinition)
-
-			// Instance visualization
-			r.Get("/asset/{instanceID}", s.handleVisualizeAsset)
-			r.Get("/asset/{instanceID}/history", s.handleVisualizeHistory)
 		})
 	})
 
@@ -230,13 +216,27 @@ func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FSM API Documentation</title>
+    <title>State Guard API Documentation</title>
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
     <style>
         body { margin: 0; padding: 0; }
+        .info-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .info-banner h2 { margin: 0 0 10px 0; }
+        .info-banner p { margin: 5px 0; font-size: 14px; }
     </style>
 </head>
 <body>
+    <div class="info-banner">
+        <h2>State Guard API Server</h2>
+        <p>This is the DATA API for asset management (CRUD operations)</p>
+        <p><strong>For Web UI and Visualization features (Zoom, Timeline, History, etc.), use sg_web</strong></p>
+    </div>
     <div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
     <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
@@ -265,26 +265,3 @@ func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
-// handleVisualizeAsset delegates to visualization handler
-func (s *Server) handleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
-	handler := visualize.NewHandler(s.storage, s.assetDir)
-	handler.HandleVisualizeAsset(w, r)
-}
-
-// handleVisualizeDefinition delegates to visualization handler
-func (s *Server) handleVisualizeDefinition(w http.ResponseWriter, r *http.Request) {
-	handler := visualize.NewHandler(s.storage, s.assetDir)
-	handler.HandleVisualizeDefinition(w, r)
-}
-
-// handleVisualizeHistory delegates to visualization handler
-func (s *Server) handleVisualizeHistory(w http.ResponseWriter, r *http.Request) {
-	handler := visualize.NewHandler(s.storage, s.assetDir)
-	handler.HandleVisualizeHistory(w, r)
-}
-
-// handleDiagramPage delegates to visualization handler
-func (s *Server) handleDiagramPage(w http.ResponseWriter, r *http.Request) {
-	handler := visualize.NewHandler(s.storage, s.assetDir)
-	handler.HandleDiagramPage(w, r)
-}
