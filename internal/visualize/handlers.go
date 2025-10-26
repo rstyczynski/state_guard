@@ -3,9 +3,9 @@ package visualize
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"time"
@@ -17,17 +17,15 @@ import (
 
 // Handler provides HTTP handlers for visualization endpoints
 type Handler struct {
-	storage  storage.Storage
-	assetDir string
-	apiURL   string // URL of the API server for data operations
+	storage storage.Storage
+	apiURL  string // URL of the API server for data operations
 }
 
 // NewHandler creates a new visualization handler
-func NewHandler(store storage.Storage, assetDir string, apiURL string) *Handler {
+func NewHandler(store storage.Storage, apiURL string) *Handler {
 	return &Handler{
-		storage:  store,
-		assetDir: assetDir,
-		apiURL:   apiURL,
+		storage: store,
+		apiURL:  apiURL,
 	}
 }
 
@@ -119,77 +117,50 @@ func (h *Handler) HandleVisualizeAsset(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleVisualizeDefinition generates visualization for FSM definition only
+// HandleVisualizeDefinition proxies definition visualization to sg_api
 // GET /api/v1/visualize/definition/:name
+// sg_web does NOT have access to asset files - it proxies to sg_api which does
 func (h *Handler) HandleVisualizeDefinition(w http.ResponseWriter, r *http.Request) {
-	// Panic recovery with detailed logging
-	defer func() {
-		if panicErr := recover(); panicErr != nil {
-			stack := debug.Stack()
-			log.Printf("CRASH in HandleVisualizeDefinition: %v\nStack trace:\n%s", panicErr, string(stack))
-
-			// Log memory stats for debugging
-			var m runtime.MemStats
-			runtime.ReadMemStats(&m)
-			log.Printf("Memory stats at crash: Alloc=%d KB, Sys=%d KB, NumGC=%d",
-				m.Alloc/1024, m.Sys/1024, m.NumGC)
-
-			// Return 500 error with crash details
-			http.Error(w, fmt.Sprintf("Definition visualization crashed: %v", panicErr), http.StatusInternalServerError)
-		}
-	}()
-
 	definitionName := chi.URLParam(r, "name")
-	log.Printf("Starting definition visualization for: %s", definitionName)
+	log.Printf("Proxying definition visualization request to sg_api for: %s", definitionName)
 
-	// Parse query parameters
-	format, layout, opts, err := h.parseOptions(r)
+	// Build proxy URL to sg_api
+	proxyURL := fmt.Sprintf("%s/api/v1/visualize/definition/%s?%s",
+		h.apiURL, definitionName, r.URL.RawQuery)
+
+	// Create proxy request
+	proxyReq, err := http.NewRequest("GET", proxyURL, nil)
 	if err != nil {
-		log.Printf("Failed to parse options for definition %s: %v", definitionName, err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Printf("Failed to create proxy request for definition %s: %v", definitionName, err)
+		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
 		return
 	}
 
-	// Load generator from file path for definition visualization
-	generator, err := h.loadGeneratorFromFile(definitionName)
-	if err != nil {
-		log.Printf("Failed to load generator for definition %s: %v", definitionName, err)
-		http.Error(w, fmt.Sprintf("Failed to load FSM definition: %v", err), http.StatusNotFound)
-		return
+	// Copy headers
+	for k, v := range r.Header {
+		proxyReq.Header[k] = v
 	}
 
-	// Note: Global mutex is acquired at the Generator level to serialize all operations
-
-	// Generate visualization with fallback
-	opts.Format = format
-	opts.Layout = layout
-	opts.HighlightCurrent = false // Definition only, no instance highlighting
-	data, err := generator.GenerateDefinition(opts)
+	// Execute proxy request
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(proxyReq)
 	if err != nil {
-		log.Printf("Definition GraphViz generation failed for %s (format: %s, layout: %s): %v",
-			definitionName, format, layout, err)
-
-		// Log memory after failure
-		var mAfter runtime.MemStats
-		runtime.ReadMemStats(&mAfter)
-		log.Printf("Memory after definition failure: Alloc=%d KB, Sys=%d KB, NumGC=%d",
-			mAfter.Alloc/1024, mAfter.Sys/1024, mAfter.NumGC)
-
-		// GraphViz WASM error - no fallback, just return error
-		log.Printf("GraphViz WASM error for definition %s: %v", definitionName, err)
-		http.Error(w, fmt.Sprintf("Definition visualization failed (GraphViz WASM error): %v", err), http.StatusInternalServerError)
+		log.Printf("Failed to proxy definition visualization to sg_api: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to fetch from API: %v", err), http.StatusBadGateway)
 		return
 	}
+	defer resp.Body.Close()
 
-	// Log successful generation
-	log.Printf("Successfully generated %s definition visualization for %s (%d bytes)",
-		format, definitionName, len(data))
+	// Copy response headers
+	for k, v := range resp.Header {
+		w.Header()[k] = v
+	}
 
-	// Set appropriate headers
-	w.Header().Set("Content-Type", ContentType(format))
-	w.Header().Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour (definitions don't change)
-	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	// Copy status code and body
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+
+	log.Printf("Successfully proxied definition visualization for %s (status: %d)", definitionName, resp.StatusCode)
 }
 
 // HandleVisualizeHistory generates animated visualization of state progression
@@ -351,30 +322,16 @@ func (h *Handler) parseOptions(r *http.Request) (Format, Layout, Options, error)
 	return format, layout, opts, nil
 }
 
-// loadGenerator loads a visualization generator for an asset type
-// If the instance contains FSM definition, use it directly (for sg_web HTTP mode)
-// Otherwise, load from file path (for direct SQLite mode)
+// loadGeneratorFromInstance loads a visualization generator from instance data
+// In sg_web, the instance MUST contain FSM definition from API (no file loading)
 func (h *Handler) loadGeneratorFromInstance(instance *storage.FSMInstance) (*Generator, error) {
-	// If instance has FSM definition, create generator from it
-	if instance.FSMDefinition != nil {
-		def := h.convertToFSMDefinition(instance.FSMDefinition)
-		return NewGenerator(def, h.storage), nil
+	// Instance MUST have FSM definition from API
+	if instance.FSMDefinition == nil {
+		return nil, fmt.Errorf("instance does not contain FSM definition (API must provide it)")
 	}
 
-	// Fallback: load from file path (for direct SQLite mode in sg_web)
-	return h.loadGeneratorFromFile(instance.AssetTypeName)
-}
-
-// loadGeneratorFromFile loads a generator from an asset type file path
-func (h *Handler) loadGeneratorFromFile(assetTypeName string) (*Generator, error) {
-	// Resolve asset type path
-	assetTypePath := assetTypeName
-	if !filepath.IsAbs(assetTypePath) && h.assetDir != "" {
-		assetTypePath = filepath.Join(h.assetDir, assetTypePath)
-	}
-
-	// Use global generator cache
-	return GetOrCreateGlobalGenerator(assetTypePath, h.storage)
+	def := h.convertToFSMDefinition(instance.FSMDefinition)
+	return NewGenerator(def, h.storage), nil
 }
 
 // convertToFSMDefinition converts storage.FSMDefinition to fsm.Definition

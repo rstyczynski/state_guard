@@ -339,15 +339,20 @@ GET /docs/diagram/:instanceID
 
 ```
 sg_web (port 3000)                     sg_api (port 8080)
-├─ /api/v1/visualize/*                 ├─ /api/v1/assets/*
-│  ├─ SVG/PNG rendering                │  ├─ Create asset
-│  ├─ GraphViz WASM                    │  ├─ Get asset
-│  └─ Memory leak isolation            │  ├─ Transition state
-├─ /docs/diagram/{id}                  │  ├─ Get history
-│  └─ Interactive HTML UI              │  └─ Delete asset
+├─ /                                   ├─ /api/v1/assets/*
+│  └─ Navigation page                  │  ├─ Create asset
+├─ /swagger                            │  ├─ Get asset
+│  └─ Swagger UI (sg_web API)          │  ├─ Transition state
+├─ /api/v1/visualize/*                 │  ├─ Get history
+│  ├─ SVG/PNG rendering                │  └─ Delete asset
+│  ├─ GraphViz WASM                    ├─ /api/v1/visualize/definition/*
+│  └─ Memory leak isolation            │  └─ Definition rendering
+├─ /docs/diagram/{id}                  ├─ /docs
+│  └─ Interactive HTML UI              │  └─ Swagger UI (sg_api)
 ├─ HTTP Storage Client                 ├─ SQLite Storage
-│  └─ Proxies to sg_api                │  └─ Direct database access
+│  └─ ALL data via sg_api              │  └─ Direct database access
 └─ Flags: --port, --api-url            └─ Flags: --port, --db, --asset-dir
+   (NO --db, NO --asset-dir)
 ```
 
 **Features Implemented:**
@@ -377,41 +382,69 @@ sg_web (port 3000)                     sg_api (port 8080)
    - Visualization renders call sg_web (same server)
    - Clean separation of concerns
 
-5. ✅ **Dual Operating Modes:**
-   - **Proxy mode (recommended):** `--port --api-url` (no DB needed)
-   - **Standalone mode:** `--port --db --asset-dir` (direct DB access)
+5. ✅ **Single Operating Mode (Proxy Only):**
+   - **Proxy mode (ONLY mode):** `--port --api-url` (required)
+   - NO standalone mode - sg_web MUST run with sg_api
+   - ALL data (including FSM definitions) fetched from sg_api
+   - sg_web has ZERO direct file or database access
+
+6. ✅ **Navigation Page:**
+   - Root page (/) shows links to all four destinations:
+     - sg_api documentation (port 8080)
+     - sg_web API documentation (port 3000 /swagger)
+     - Health endpoints for both services
+     - Interactive diagram viewer with instance ID input
+
+7. ✅ **Swagger UI for sg_web:**
+   - Dedicated OpenAPI spec: `docs/sg_web_openapi.yaml`
+   - Specialized for visualization endpoints only
+   - Accessible at: `http://localhost:3000/swagger`
+   - Documents all query parameters and formats
+
+8. ✅ **Definition Visualization Proxy:**
+   - `/api/v1/visualize/definition/{name}` proxied to sg_api
+   - sg_web does NOT read asset files (no --asset-dir)
+   - sg_api handles definition rendering (has file access)
+   - Clean separation of responsibilities
 
 **Changes Made:**
 
-- `cmd/sg_web/main.go` - Added HTTP client support, dual mode operation
-- `internal/web/server.go` - Added visualization routes, storage dependency
-- `internal/web/handlers.go` - Added visualization handler delegation
-- `internal/web/http_storage.go` - **NEW** - HTTP storage client
-- `internal/visualize/handlers.go` - Added apiURL parameter injection
-- `internal/web/diagram.go` - **REMOVED** (functionality in visualize package)
+- `cmd/sg_web/main.go` - Removed --db and --asset-dir flags, proxy mode only
+- `internal/web/server.go` - Removed assetDir parameter, added /swagger route
+- `internal/web/handlers.go` - Added Swagger UI handler, updated navigation page
+- `internal/web/http_storage.go` - HTTP storage client (proxy to sg_api)
+- `internal/visualize/handlers.go` - Removed assetDir, proxies definition requests
+- `docs/sg_web_openapi.yaml` - **NEW** - Dedicated OpenAPI spec for sg_web
 
 **Usage:**
 
 ```bash
-# Production setup (recommended)
+# Production setup (ONLY way to run sg_web)
 ./bin/sg_api --port 8080 --db fsm.db --asset-dir examples
 ./bin/sg_web --port 3000 --api-url http://localhost:8080
 
-# Standalone (for testing)
-./bin/sg_web --port 3000 --db fsm.db --asset-dir examples
+# Access points:
+# - Navigation: http://localhost:3000/
+# - sg_web Swagger: http://localhost:3000/swagger
+# - sg_api Swagger: http://localhost:8080/docs
+# - Diagram viewer: http://localhost:3000/docs/diagram/{instanceID}
 ```
 
 **Testing Status:**
 - ✅ Both binaries build successfully
-- ✅ sg_web runs without database (proxy mode)
+- ✅ sg_web runs in proxy-only mode (NO standalone)
 - ✅ sg_web serves all 5 visualization features
 - ✅ JavaScript correctly calls sg_api for data
-- ⏳ Tests update pending (functional, perf, crash)
+- ✅ Swagger UI accessible at /swagger
+- ✅ Navigation page links to all services
+- ✅ Definition visualization proxied to sg_api
+- ✅ Health endpoints operational for both services
 
 **Documentation Updated:**
-- ✅ USAGE.md - Added architecture diagram and sg_web section
-- ✅ Commit message - Comprehensive architecture documentation
-- ⏳ Test documentation update pending
+- ✅ USAGE.md - Updated sg_web section, removed standalone mode
+- ✅ README.md - Added two-server architecture, sg_web endpoints
+- ✅ IMPLEMENTATION_PLAN.md - Updated Phase 2.5 with latest changes
+- ✅ docs/sg_web_openapi.yaml - Created specialized OpenAPI spec
 
 
 

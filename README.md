@@ -4,37 +4,52 @@ A production-ready Go-based Finite State Machine implementation with REST API, p
 
 ## Features
 
-✅ **REST API** - Production-ready HTTP API with Chi router
+✅ **REST API** - Production-ready HTTP API with Chi router (sg_api)
+✅ **Web Visualization** - Interactive FSM diagrams with WASM isolation (sg_web)
 ✅ **Interactive CLI** - REPL for testing and development
 ✅ **Asset Types** - State machine + webhook configuration
 ✅ **Webhooks** - HTTP notifications on state changes (async, non-blocking)
 ✅ **Persistence** - SQLite with transactional guarantees
 ✅ **Multi-Asset** - Manage multiple assets in one database
 ✅ **State History** - Full audit trail of transitions
-✅ **OpenAPI Documentation** - Interactive Swagger UI
+✅ **OpenAPI Documentation** - Interactive Swagger UI for both services
 
 ## Quick Start
 
 ### 1. Build
 
 ```bash
-# Build both CLI and API
-go build -o bin/fsm cmd/fsm/main.go
-go build -o bin/api cmd/api/main.go
+# Build all binaries
+make build
+
+# Or build individually:
+go build -o bin/sg cmd/fsm/main.go
+go build -o bin/sg_api cmd/api/main.go
+go build -o bin/sg_web cmd/sg_web/main.go
 
 # Create data directory for databases
 mkdir -p data
 ```
 
-### 2. Start REST API Server
+### 2. Start Both Servers
 
+**Terminal 1 - Start sg_api (data operations):**
 ```bash
-# Start API server
-./bin/api --port 8080 --db data/demo.db
+./bin/sg_api --port 8080 --db data/demo.db --asset-dir examples
 
 # Server starts at http://localhost:8080
 # Swagger UI: http://localhost:8080/docs
 # OpenAPI spec: http://localhost:8080/openapi.yaml
+```
+
+**Terminal 2 - Start sg_web (visualization):**
+```bash
+./bin/sg_web --port 3000 --api-url http://localhost:8080
+
+# Server starts at http://localhost:3000
+# Navigation page: http://localhost:3000/
+# Swagger UI: http://localhost:3000/swagger
+# OpenAPI spec: http://localhost:3000/openapi.yaml
 ```
 
 ### 3. Use the REST API
@@ -387,17 +402,17 @@ Transitioned: RUNNING -> STOPPING
 
 ## Command-Line Reference
 
-### REST API Server (`./bin/api`)
+### sg_api - REST API Server (`./bin/sg_api`)
 
 ```bash
 # Default settings
-./bin/api
+./bin/sg_api
 
 # Custom settings
-./bin/api --port 8080 --db data/demo.db --asset-dir examples
+./bin/sg_api --port 8080 --db data/demo.db --asset-dir examples
 
 # Show version
-./bin/api --version
+./bin/sg_api --version
 ```
 
 **Flags:**
@@ -405,6 +420,23 @@ Transitioned: RUNNING -> STOPPING
 - `--db` - SQLite database path (default: fsm.db)
 - `--asset-dir` - Directory containing asset type YAML files (default: examples)
 - `--version` - Show version and exit
+
+### sg_web - Visualization Server (`./bin/sg_web`)
+
+```bash
+# Start sg_web (requires sg_api to be running)
+./bin/sg_web --port 3000 --api-url http://localhost:8080
+
+# Show version
+./bin/sg_web --version
+```
+
+**Flags:**
+- `--port` - HTTP server port (default: 3000)
+- `--api-url` - URL of sg_api server (default: http://localhost:8080, **REQUIRED**)
+- `--version` - Show version and exit
+
+**Note:** sg_web gets ALL data via HTTP from sg_api. It has no direct database or file access.
 
 ### Interactive CLI (`./bin/fsm`)
 
@@ -449,22 +481,48 @@ exit                      Exit program
 
 ## REST API Endpoints
 
-### Health Check
+### sg_api Endpoints (port 8080)
+
+**Health Check:**
 - `GET /api/v1/health` - Server health status
 
-### Asset Management
+**Asset Management:**
 - `POST /api/v1/assets` - Create new asset instance
 - `GET /api/v1/assets` - List all assets
 - `GET /api/v1/assets/{id}` - Get asset details
 - `DELETE /api/v1/assets/{id}` - Delete asset
 
-### State Operations
+**State Operations:**
 - `POST /api/v1/assets/{id}/transition` - Execute state transition
 - `GET /api/v1/assets/{id}/history?limit=N` - Get state history
 
-### Documentation
+**Documentation:**
 - `GET /docs` - Interactive Swagger UI
 - `GET /openapi.yaml` - OpenAPI 3.0 specification
+
+### sg_web Endpoints (port 3000)
+
+**Navigation:**
+- `GET /` - Navigation page (links to all services)
+- `GET /docs/diagram/{id}` - Interactive diagram viewer for asset instance
+
+**Visualization API:**
+- `GET /api/v1/visualize/asset/{id}` - Visualize asset instance
+- `GET /api/v1/visualize/asset/{id}/history` - Visualize with history
+- `GET /api/v1/visualize/definition/{name}` - Visualize FSM definition (proxied to sg_api)
+
+**Query Parameters:**
+- `format` - svg, png, dot, mermaid, json (default: svg)
+- `layout` - horizontal, vertical (default: horizontal)
+- `highlight_current` - true, false (default: true)
+- `available` - true, false (default: true)
+- `history` - true, false (default: false)
+- `scheme` - light, dark (default: light)
+
+**Documentation:**
+- `GET /swagger` - Interactive Swagger UI (sg_web API)
+- `GET /openapi.yaml` - OpenAPI 3.0 specification (sg_web)
+- `GET /health` - Service health check
 
 ---
 
@@ -650,18 +708,55 @@ transitions:
 
 ## Architecture
 
+### Two-Server Design
+
+The system uses a split architecture for WASM isolation:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Client/Browser                         │
+└────────────┬──────────────────────────────┬─────────────────┘
+             │                              │
+             │ Data Operations              │ Visualizations
+             │ (assets, transitions)        │ (diagrams)
+             ▼                              ▼
+┌──────────────────────────┐    ┌──────────────────────────┐
+│   sg_api (port 8080)     │◄───│   sg_web (port 3000)     │
+│                          │    │                          │
+│ • /api/v1/assets/*       │    │ • /api/v1/visualize/*    │
+│ • SQLite Storage         │    │ • WASM Rendering         │
+│ • Asset Type Files       │    │ • HTTP Proxy to sg_api   │
+│ • Webhooks               │    │ • Interactive UI         │
+│ • State Transitions      │    │ • Swagger UI             │
+└──────────────────────────┘    └──────────────────────────┘
+```
+
+**Benefits:**
+- ✅ **WASM Isolation**: GraphViz memory leaks confined to sg_web
+- ✅ **Independent Restart**: sg_web can restart without affecting data
+- ✅ **Clear Separation**: Data (sg_api) vs Visualization (sg_web)
+- ✅ **Scalability**: Run multiple sg_web instances for load balancing
+
 ### Project Structure
 
 ```
 state_guard/
 ├── cmd/
-│   ├── api/main.go           # REST API server
+│   ├── sg_api/main.go        # REST API server (data operations)
+│   ├── sg_web/main.go        # Web UI server (visualization)
 │   └── fsm/main.go           # Interactive CLI
 ├── internal/
-│   ├── api/                  # API handlers and server
+│   ├── api/                  # API handlers and server (sg_api)
 │   │   ├── server.go         # Chi router with middleware
 │   │   ├── handlers.go       # Endpoint handlers
 │   │   └── models.go         # Request/response models
+│   ├── web/                  # Web UI server (sg_web)
+│   │   ├── server.go         # HTTP server
+│   │   ├── handlers.go       # UI handlers
+│   │   └── http_storage.go  # HTTP client for sg_api
+│   ├── visualize/            # Visualization rendering
+│   │   ├── visualize.go      # GraphViz WASM renderer
+│   │   └── handlers.go       # Visualization endpoints
 │   ├── fsm/                  # Core FSM engine
 │   │   ├── definition.go     # YAML parsing
 │   │   ├── fsm.go           # State machine logic
@@ -681,7 +776,8 @@ state_guard/
 ├── data/                    # Database files (gitignored)
 ├── bin/                     # Compiled binaries
 └── docs/
-    └── openapi.yaml         # OpenAPI 3.0 spec
+    ├── openapi.yaml         # sg_api OpenAPI spec
+    └── sg_web_openapi.yaml  # sg_web OpenAPI spec
 ```
 
 ### Key Components

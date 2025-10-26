@@ -15,16 +15,14 @@ import (
 type Server struct {
 	httpServer *http.Server
 	storage    storage.Storage
-	assetDir   string
 	apiURL     string // URL of the sg_api backend
 }
 
 // NewServer creates a new Web UI server
-func NewServer(store storage.Storage, assetDir string, apiURL string) *Server {
+func NewServer(store storage.Storage, apiURL string) *Server {
 	return &Server{
-		storage:  store,
-		assetDir: assetDir,
-		apiURL:   apiURL,
+		storage: store,
+		apiURL:  apiURL,
 	}
 }
 
@@ -44,6 +42,7 @@ func (s *Server) Start(addr string) error {
 	r.Get("/", s.handleAPIDocs)
 	r.Get("/docs", s.handleAPIDocs)
 	r.Get("/docs/diagram/{instanceID}", s.handleDiagramPage)
+	r.Get("/swagger", s.handleSwaggerUI)
 	r.Get("/openapi.yaml", s.handleOpenAPISpec)
 	r.Get("/docs/openapi.yaml", s.handleOpenAPISpec)
 

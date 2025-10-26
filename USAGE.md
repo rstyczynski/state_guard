@@ -306,41 +306,40 @@ curl -X DELETE http://localhost:8080/api/v1/assets/web1
 
 ## 3. sg_web - Web Visualization Server
 
-The Web UI server provides interactive diagram visualization with all features isolated from the data API.
+The Web UI server provides interactive diagram visualization with WASM isolation. **sg_web gets ALL data via HTTP API from sg_api** - it has no direct access to database or asset files.
 
 ### Starting sg_web
 
-#### Recommended: Proxy Mode (WASM Isolation)
+**Proxy Mode (Only Mode - WASM Isolation):**
 
 ```bash
 # Start sg_web pointing to sg_api
 ./bin/sg_web --port 3000 --api-url http://localhost:8080
 ```
 
-**Features:**
-- ✅ No database connection needed
+**Architecture Features:**
+- ✅ ALL data fetched via HTTP from sg_api (no local files)
 - ✅ WASM memory leaks isolated to sg_web process
 - ✅ Can restart independently without affecting data
-- ✅ Recommended for production
-
-#### Optional: Standalone Mode
-
-```bash
-# Start sg_web with direct database access
-./bin/sg_web --port 3000 --db fsm.db --asset-dir examples
-```
-
-**Use when:**
-- Testing locally without sg_api
-- Simple deployments
+- ✅ Proxies definition requests to sg_api
+- ✅ Renders visualizations locally with WASM
 
 #### Command-Line Flags
 
 - `--port` - HTTP server port (default: 3000)
-- `--api-url` - URL of sg_api server (default: http://localhost:8080)
-- `--db` - Path to SQLite database (optional, for standalone mode)
-- `--asset-dir` - Directory containing asset type YAML files (optional, for standalone mode)
+- `--api-url` - URL of sg_api server (default: http://localhost:8080, **REQUIRED**)
 - `--version` - Show version and exit
+
+**Note:** sg_web no longer supports standalone mode. It MUST run with sg_api for data operations.
+
+### Web UI Documentation
+
+Once the server is running:
+
+- **Navigation Page**: http://localhost:3000/
+- **Swagger UI (sg_web API)**: http://localhost:3000/swagger
+- **OpenAPI Specification**: http://localhost:3000/openapi.yaml
+- **Health Check**: http://localhost:3000/health
 
 ### Visualization Features
 
@@ -374,8 +373,11 @@ sg_web provides interactive FSM diagrams with the following features:
 ### Accessing Visualizations
 
 ```bash
-# Home page
+# Navigation page (links to sg_api, sg_web API, health, and diagram viewer)
 http://localhost:3000/
+
+# sg_web Swagger UI (Visualization API documentation)
+http://localhost:3000/swagger
 
 # Interactive diagram viewer for an asset
 http://localhost:3000/docs/diagram/{instanceID}
@@ -384,20 +386,28 @@ http://localhost:3000/docs/diagram/{instanceID}
 http://localhost:3000/docs/diagram/web1
 ```
 
+**Navigation Page Features:**
+- Links to sg_api documentation (port 8080)
+- Links to sg_web Swagger UI for visualization API
+- Health check endpoints for both services
+- Interactive instance ID input for diagram viewer
+
 ### Visualization API Endpoints
 
-These endpoints are served by sg_web for rendering diagrams:
+These endpoints are served by sg_web:
 
 ```bash
-# Visualize an asset's current state
+# Visualize an asset's current state (rendered by sg_web)
 http://localhost:3000/api/v1/visualize/asset/{instanceID}?format=svg
 
-# Visualize with history
+# Visualize with history (rendered by sg_web)
 http://localhost:3000/api/v1/visualize/asset/{instanceID}/history?format=svg
 
-# Visualize state machine definition
+# Visualize state machine definition (proxied to sg_api)
 http://localhost:3000/api/v1/visualize/definition/{name}?format=svg
 ```
+
+**Note:** Definition visualization is proxied to sg_api since sg_web doesn't have access to asset files. sg_api has the asset-dir and handles definition rendering.
 
 **Supported formats:**
 - `svg` - Scalable Vector Graphics (default, interactive)

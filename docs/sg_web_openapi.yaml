@@ -1,0 +1,399 @@
+openapi: 3.0.3
+info:
+  title: State Guard Web UI - Visualization API
+  description: |
+    Visualization API for FSM state diagrams with WASM isolation.
+
+    ## Overview
+    The sg_web service provides specialized visualization endpoints for rendering
+    FSM state diagrams in multiple formats (SVG, PNG, DOT, Mermaid, JSON).
+
+    ## Architecture
+    - **sg_web (port 3000):** Visualization rendering with WASM isolation
+    - **sg_api (port 8080):** Data management and state transitions
+    - **Data Flow:** sg_web proxies data requests to sg_api, renders locally
+
+    ## Features
+    - Multiple output formats (SVG, PNG, DOT, Mermaid, JSON)
+    - Current state highlighting
+    - Available transitions visualization
+    - History path overlays
+    - Interactive diagram viewer at `/docs/diagram/{instanceID}`
+
+    ## WASM Isolation
+    Visualizations are rendered in sg_web's isolated process to prevent
+    WASM memory leaks from affecting the main API server (sg_api).
+
+  version: 2.5.0
+  contact:
+    name: State Guard Support
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Development server (sg_web)
+
+tags:
+  - name: visualize
+    description: FSM state diagram visualization
+  - name: health
+    description: Service health checks
+
+paths:
+  /health:
+    get:
+      tags:
+        - health
+      summary: Health check
+      description: Check the health status of the sg_web visualization server
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                service: "web-ui"
+                api_backend: "http://localhost:8080"
+
+  /visualize/definition/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        description: Asset type name or path (e.g., "simple_asset_type.yaml")
+        schema:
+          type: string
+          example: "simple_asset_type.yaml"
+      - name: format
+        in: query
+        required: false
+        description: Output format for the diagram
+        schema:
+          type: string
+          enum: [svg, png, dot, mermaid, json]
+          default: svg
+      - name: layout
+        in: query
+        required: false
+        description: Diagram layout orientation
+        schema:
+          type: string
+          enum: [horizontal, vertical]
+          default: horizontal
+      - name: scheme
+        in: query
+        required: false
+        description: Color scheme for the diagram
+        schema:
+          type: string
+          enum: [light, dark]
+          default: light
+
+    get:
+      tags:
+        - visualize
+      summary: Visualize FSM definition
+      description: |
+        Generate a state diagram for an FSM definition (no instance data).
+        Shows all states and transitions defined in the FSM.
+      operationId: visualizeDefinition
+      responses:
+        '200':
+          description: Diagram generated successfully
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+              example: "<svg>...</svg>"
+            image/png:
+              schema:
+                type: string
+                format: binary
+            text/vnd.graphviz:
+              schema:
+                type: string
+              example: "digraph FSM { ... }"
+            text/plain:
+              schema:
+                type: string
+                description: Mermaid diagram syntax
+              example: "stateDiagram-v2\n  [*] --> CREATED\n  ..."
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisualizationJSON'
+        '404':
+          description: Definition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Visualization rendering failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /visualize/asset/{instanceID}:
+    parameters:
+      - name: instanceID
+        in: path
+        required: true
+        description: Asset instance identifier
+        schema:
+          type: string
+          example: "web-server-1"
+      - name: format
+        in: query
+        required: false
+        description: Output format for the diagram
+        schema:
+          type: string
+          enum: [svg, png, dot, mermaid, json]
+          default: svg
+      - name: layout
+        in: query
+        required: false
+        description: Diagram layout orientation
+        schema:
+          type: string
+          enum: [horizontal, vertical]
+          default: horizontal
+      - name: available
+        in: query
+        required: false
+        description: Highlight available transitions from current state
+        schema:
+          type: boolean
+          default: true
+      - name: highlight_current
+        in: query
+        required: false
+        description: Highlight current state in green
+        schema:
+          type: boolean
+          default: true
+      - name: history
+        in: query
+        required: false
+        description: Show transition history overlay
+        schema:
+          type: boolean
+          default: false
+      - name: scheme
+        in: query
+        required: false
+        description: Color scheme for the diagram
+        schema:
+          type: string
+          enum: [light, dark]
+          default: light
+
+    get:
+      tags:
+        - visualize
+      summary: Visualize asset instance
+      description: |
+        Generate a state diagram for a specific asset instance with current state highlighted.
+
+        **Features:**
+        - Current state highlighted in green (when `highlight_current=true`)
+        - Available transitions shown with blue edges (when `available=true`)
+        - History path overlay (when `history=true`)
+        - Multiple output formats (SVG, PNG, DOT, Mermaid, JSON)
+
+        **Data Source:**
+        Instance data is fetched from sg_api (port 8080) and rendered locally in sg_web.
+
+      operationId: visualizeAsset
+      responses:
+        '200':
+          description: Diagram generated successfully
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            text/vnd.graphviz:
+              schema:
+                type: string
+            text/plain:
+              schema:
+                type: string
+                description: Mermaid diagram syntax
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisualizationJSON'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Visualization rendering failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /visualize/asset/{instanceID}/history:
+    parameters:
+      - name: instanceID
+        in: path
+        required: true
+        description: Asset instance identifier
+        schema:
+          type: string
+          example: "web-server-1"
+      - name: format
+        in: query
+        required: false
+        description: Output format for the diagram
+        schema:
+          type: string
+          enum: [svg, png, dot, mermaid, json]
+          default: svg
+      - name: layout
+        in: query
+        required: false
+        description: Diagram layout orientation
+        schema:
+          type: string
+          enum: [horizontal, vertical]
+          default: horizontal
+
+    get:
+      tags:
+        - visualize
+      summary: Visualize instance history
+      description: |
+        Generate a state diagram with the transition history path highlighted.
+        Shows the complete history of state transitions for the instance.
+      operationId: visualizeHistory
+      responses:
+        '200':
+          description: Diagram generated successfully
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Visualization rendering failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Health status
+          enum: [healthy, unhealthy]
+          example: "healthy"
+        service:
+          type: string
+          description: Service name
+          example: "web-ui"
+        api_backend:
+          type: string
+          description: URL of the sg_api backend server
+          example: "http://localhost:8080"
+
+    VisualizationJSON:
+      type: object
+      description: JSON representation of the FSM diagram
+      properties:
+        nodes:
+          type: array
+          description: List of FSM states
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                example: "RUNNING"
+              label:
+                type: string
+                example: "RUNNING"
+              is_current:
+                type: boolean
+                description: Whether this is the current state (instance visualization only)
+                example: true
+              is_final:
+                type: boolean
+                description: Whether this is a final state
+                example: false
+        edges:
+          type: array
+          description: List of state transitions
+          items:
+            type: object
+            properties:
+              from:
+                type: string
+                example: "STARTING"
+              to:
+                type: string
+                example: "RUNNING"
+              is_available:
+                type: boolean
+                description: Whether this transition is available from current state
+                example: true
+              is_history:
+                type: boolean
+                description: Whether this transition is in the instance history
+                example: false
+        metadata:
+          type: object
+          properties:
+            instance_id:
+              type: string
+              example: "web-server-1"
+            current_state:
+              type: string
+              example: "RUNNING"
+            definition_name:
+              type: string
+              example: "generic_lifecycle"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+          example: "Not Found"
+        message:
+          type: string
+          description: Detailed error message
+          example: "Instance not found: web-server-1"
+        code:
+          type: integer
+          description: HTTP status code
+          example: 404
