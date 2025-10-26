@@ -251,7 +251,7 @@ func (h *Handler) HandleVisualizeHistory(w http.ResponseWriter, r *http.Request)
 }
 
 // HandleDiagramPage serves interactive HTML wrapper
-// GET /docs/diagram/:instanceID
+// GET /console/:instanceID
 func (h *Handler) HandleDiagramPage(w http.ResponseWriter, r *http.Request) {
 	instanceID := chi.URLParam(r, "instanceID")
 

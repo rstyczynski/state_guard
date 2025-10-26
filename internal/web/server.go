@@ -39,12 +39,11 @@ func (s *Server) Start(addr string) error {
 	r.Use(s.corsMiddleware)
 
 	// Web UI routes (HTML pages)
-	r.Get("/", s.handleAPIDocs)
-	r.Get("/docs", s.handleAPIDocs)
-	r.Get("/docs/diagram/{instanceID}", s.handleDiagramPage)
-	r.Get("/swagger", s.handleSwaggerUI)
-	r.Get("/openapi.yaml", s.handleOpenAPISpec)
-	r.Get("/docs/openapi.yaml", s.handleOpenAPISpec)
+	r.Get("/", s.handleHome)
+	r.Get("/console/{instanceID}", s.handleDiagramPage)
+	r.Get("/v1/docs", s.handleSwaggerUI)
+	r.Get("/v1/openapi.yaml", s.handleOpenAPISpec)
+	r.Get("/docs/openapi.yaml", s.handleOpenAPISpec) // Backward compatibility for diagram viewer
 
 	// Health check
 	r.Get("/health", s.handleHealth)

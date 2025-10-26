@@ -85,9 +85,13 @@ For production use, you need both servers running:
 ```
 
 Then open your browser:
-- **Web UI**: http://localhost:3000/
-- **API Docs**: http://localhost:8080/docs
-- **Diagram Viewer**: http://localhost:3000/docs/diagram/{instanceID}
+- **Unified Home (sg_api)**: http://localhost:8080/
+- **Unified Home (sg_web)**: http://localhost:3000/
+- **sg_api Docs**: http://localhost:8080/v1/docs
+- **sg_web API Docs**: http://localhost:3000/v1/docs
+- **Diagram Viewer**: http://localhost:3000/console/{instanceID}
+
+**Note:** Both services share the same unified home page with navigation to all services.
 
 ---
 
@@ -128,8 +132,9 @@ go run cmd/sg_api/main.go --port 8080 --db data/demo.db --asset-dir examples
 
 Once the server is running:
 
-- **Interactive Swagger UI**: http://localhost:8080/docs
-- **OpenAPI Specification**: http://localhost:8080/openapi.yaml
+- **Unified Home Page**: http://localhost:8080/ (navigation to all services)
+- **Interactive Swagger UI**: http://localhost:8080/v1/docs
+- **OpenAPI Specification**: http://localhost:8080/v1/openapi.yaml
 - **Health Check**: http://localhost:8080/api/v1/health
 
 ### API Endpoints
@@ -336,9 +341,9 @@ The Web UI server provides interactive diagram visualization with WASM isolation
 
 Once the server is running:
 
-- **Navigation Page**: http://localhost:3000/
-- **Swagger UI (sg_web API)**: http://localhost:3000/swagger
-- **OpenAPI Specification**: http://localhost:3000/openapi.yaml
+- **Unified Home Page**: http://localhost:3000/ (same as sg_api - navigation to all services)
+- **Swagger UI (sg_web API)**: http://localhost:3000/v1/docs
+- **OpenAPI Specification**: http://localhost:3000/v1/openapi.yaml
 - **Health Check**: http://localhost:3000/health
 
 ### Visualization Features
@@ -377,13 +382,13 @@ sg_web provides interactive FSM diagrams with the following features:
 http://localhost:3000/
 
 # sg_web Swagger UI (Visualization API documentation)
-http://localhost:3000/swagger
+http://localhost:3000/v1/docs
 
 # Interactive diagram viewer for an asset
-http://localhost:3000/docs/diagram/{instanceID}
+http://localhost:3000/console/{instanceID}
 
 # Example
-http://localhost:3000/docs/diagram/web1
+http://localhost:3000/console/web1
 ```
 
 **Navigation Page Features:**
@@ -890,7 +895,7 @@ list-instances
 
 1. **Create data directory**: `mkdir -p data`
 2. **Start the REST API**: `./bin/api --db data/demo.db`
-3. **Explore the Swagger UI**: http://localhost:8080/docs
+3. **Explore the Swagger UI**: http://localhost:8080/v1/docs
 4. **Create your first asset**: Use the examples above
 5. **Test webhooks**: Run `python3 bin/webhook.py` to see webhook notifications
 6. **Try the CLI**: `./bin/fsm --db data/demo.db` for interactive testing

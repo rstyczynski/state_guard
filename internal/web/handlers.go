@@ -12,14 +12,14 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "docs/sg_web_openapi.yaml")
 }
 
-// handleAPIDocs serves a landing page with links to all services
-func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
+// handleHome serves the unified navigation home page
+func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>State Guard Web UI - Navigation</title>
+    <title>State Guard Services - Navigation</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -101,6 +101,25 @@ func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
             font-size: 12px;
             margin-left: 10px;
         }
+        input[type="text"] {
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            width: 200px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            background: white;
+            color: #667eea;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #f0f0f0;
+        }
     </style>
 </head>
 <body>
@@ -113,7 +132,7 @@ func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
             <div class="card">
                 <h2>sg_api <span class="badge">Port 8080</span></h2>
                 <p>Main API server for asset management, state transitions, and data operations.</p>
-                <a href="%s/docs">API Docs</a>
+                <a href="%s/v1/docs">API Docs</a>
                 <a href="%s/api/v1/health">Health</a>
             </div>
 
@@ -121,7 +140,7 @@ func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
             <div class="card">
                 <h2>sg_web API <span class="badge">Port 3000</span></h2>
                 <p>Visualization API with WASM isolation for rendering state diagrams.</p>
-                <a href="/swagger">API Docs</a>
+                <a href="/v1/docs">API Docs</a>
                 <a href="/health">Health</a>
             </div>
 
@@ -129,12 +148,9 @@ func (s *Server) handleAPIDocs(w http.ResponseWriter, r *http.Request) {
             <div class="card" style="grid-column: span 2;">
                 <h2>Interactive Diagram Viewer</h2>
                 <p>View live FSM state diagrams with current state highlighting and transition history. Enter your asset instance ID:</p>
-                <form onsubmit="window.location='/docs/diagram/' + document.getElementById('instanceId').value; return false;" style="margin-bottom: 10px;">
-                    <input type="text" id="instanceId" placeholder="e.g., web-server-1"
-                           style="padding: 10px; border-radius: 5px; border: none; width: 200px; margin-right: 10px;">
-                    <button type="submit" style="padding: 10px 20px; border-radius: 5px; border: none; background: white; color: #667eea; font-weight: 600; cursor: pointer;">
-                        View Diagram
-                    </button>
+                <form onsubmit="window.location='/console/' + document.getElementById('instanceId').value; return false;" style="margin-bottom: 10px;">
+                    <input type="text" id="instanceId" placeholder="e.g., web-server-1">
+                    <button type="submit">View Diagram</button>
                 </form>
             </div>
         </div>
@@ -189,16 +205,32 @@ func (s *Server) handleSwaggerUI(w http.ResponseWriter, r *http.Request) {
         *, *:before, *:after { box-sizing: inherit; }
         body { margin: 0; padding: 0; }
         .topbar { display: none; }
+        .info-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .info-banner h2 { margin: 0 0 10px 0; }
+        .info-banner p { margin: 5px 0; font-size: 14px; }
+        .info-banner a { color: white; text-decoration: underline; }
     </style>
 </head>
 <body>
+    <div class="info-banner">
+        <h2>State Guard Web UI Server</h2>
+        <p>This is the VISUALIZATION API for rendering FSM diagrams with WASM isolation</p>
+        <p><strong>For Data Operations and Asset Management, use sg_api</strong></p>
+        <p><a href="/">← Back to Home</a></p>
+    </div>
     <div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5.10.0/swagger-ui-bundle.js"></script>
     <script src="https://unpkg.com/swagger-ui-dist@5.10.0/swagger-ui-standalone-preset.js"></script>
     <script>
         window.onload = function() {
             const ui = SwaggerUIBundle({
-                url: "/openapi.yaml",
+                url: "/v1/openapi.yaml",
                 dom_id: '#swagger-ui',
                 deepLinking: true,
                 presets: [

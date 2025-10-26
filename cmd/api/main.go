@@ -59,8 +59,8 @@ func main() {
 		log.Printf("Listening on http://localhost:%s", *port)
 		log.Println()
 		log.Println("Documentation:")
-		log.Printf("  Interactive Docs: http://localhost:%s/docs", *port)
-		log.Printf("  OpenAPI Spec:     http://localhost:%s/openapi.yaml", *port)
+		log.Printf("  Interactive Docs: http://localhost:%s/v1/docs", *port)
+		log.Printf("  OpenAPI Spec:     http://localhost:%s/v1/openapi.yaml", *port)
 		log.Println()
 		log.Println("API Endpoints:")
 		log.Printf("  Health:   GET    http://localhost:%s/api/v1/health", *port)
@@ -92,7 +92,7 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
-	if err := server.Shutdown(shutdownCtx); err != nil {
+	if err := server.ShutdownWithContext(shutdownCtx); err != nil {
 		log.Printf("Error during shutdown: %v", err)
 	}
 

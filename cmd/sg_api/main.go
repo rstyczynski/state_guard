@@ -64,7 +64,7 @@ func main() {
 	addr := ":" + *port
 	log.Printf("Starting State Guard API Server (sg_api) on %s", addr)
 	log.Printf("API endpoints available at: http://localhost%s/api/v1/", addr)
-	log.Printf("API documentation: http://localhost%s/docs", addr)
+	log.Printf("API documentation: http://localhost%s/v1/docs", addr)
 	log.Printf("")
 	log.Printf("NOTE: This is the DATA API server for asset management")
 	log.Printf("      For Web UI and visualization features, use sg_web")

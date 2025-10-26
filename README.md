@@ -38,8 +38,9 @@ mkdir -p data
 ./bin/sg_api --port 8080 --db data/demo.db --asset-dir examples
 
 # Server starts at http://localhost:8080
-# Swagger UI: http://localhost:8080/docs
-# OpenAPI spec: http://localhost:8080/openapi.yaml
+# Home (unified navigation): http://localhost:8080/
+# Swagger UI: http://localhost:8080/v1/docs
+# OpenAPI spec: http://localhost:8080/v1/openapi.yaml
 ```
 
 **Terminal 2 - Start sg_web (visualization):**
@@ -47,10 +48,12 @@ mkdir -p data
 ./bin/sg_web --port 3000 --api-url http://localhost:8080
 
 # Server starts at http://localhost:3000
-# Navigation page: http://localhost:3000/
-# Swagger UI: http://localhost:3000/swagger
-# OpenAPI spec: http://localhost:3000/openapi.yaml
+# Home (unified navigation): http://localhost:3000/
+# Swagger UI: http://localhost:3000/v1/docs
+# OpenAPI spec: http://localhost:3000/v1/openapi.yaml
 ```
+
+**Note:** Both services share the same unified home page at `/` with links to all services, health endpoints, and the interactive diagram viewer.
 
 ### 3. Use the REST API
 
@@ -483,6 +486,9 @@ exit                      Exit program
 
 ### sg_api Endpoints (port 8080)
 
+**Home & Navigation:**
+- `GET /` - Unified home page (links to all services, health endpoints, and diagram viewer)
+
 **Health Check:**
 - `GET /api/v1/health` - Server health status
 
@@ -497,14 +503,14 @@ exit                      Exit program
 - `GET /api/v1/assets/{id}/history?limit=N` - Get state history
 
 **Documentation:**
-- `GET /docs` - Interactive Swagger UI
-- `GET /openapi.yaml` - OpenAPI 3.0 specification
+- `GET /v1/docs` - Interactive Swagger UI for sg_api
+- `GET /v1/openapi.yaml` - OpenAPI 3.0 specification
 
 ### sg_web Endpoints (port 3000)
 
-**Navigation:**
-- `GET /` - Navigation page (links to all services)
-- `GET /docs/diagram/{id}` - Interactive diagram viewer for asset instance
+**Home & Navigation:**
+- `GET /` - Unified home page (same as sg_api - links to all services, health endpoints, and diagram viewer)
+- `GET /console/{id}` - Interactive diagram viewer for asset instance
 
 **Visualization API:**
 - `GET /api/v1/visualize/asset/{id}` - Visualize asset instance
@@ -520,8 +526,8 @@ exit                      Exit program
 - `scheme` - light, dark (default: light)
 
 **Documentation:**
-- `GET /swagger` - Interactive Swagger UI (sg_web API)
-- `GET /openapi.yaml` - OpenAPI 3.0 specification (sg_web)
+- `GET /v1/docs` - Interactive Swagger UI (sg_web API)
+- `GET /v1/openapi.yaml` - OpenAPI 3.0 specification (sg_web)
 - `GET /health` - Service health check
 
 ---

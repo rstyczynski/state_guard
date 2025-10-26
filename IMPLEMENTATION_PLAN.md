@@ -244,7 +244,7 @@ GET /api/v1/visualize/asset-type/:assetType
   - Visualizes all instances of an asset type
   - Shows aggregate statistics and patterns
 
-GET /docs/diagram/:instanceID
+GET /console/:instanceID
   - Interactive HTML page with embedded SVG
   - Real-time updates via WebSocket (optional)
 ```
@@ -341,13 +341,13 @@ GET /docs/diagram/:instanceID
 sg_web (port 3000)                     sg_api (port 8080)
 ├─ /                                   ├─ /api/v1/assets/*
 │  └─ Navigation page                  │  ├─ Create asset
-├─ /swagger                            │  ├─ Get asset
+├─ /v1/docs                            │  ├─ Get asset
 │  └─ Swagger UI (sg_web API)          │  ├─ Transition state
 ├─ /api/v1/visualize/*                 │  ├─ Get history
 │  ├─ SVG/PNG rendering                │  └─ Delete asset
 │  ├─ GraphViz WASM                    ├─ /api/v1/visualize/definition/*
 │  └─ Memory leak isolation            │  └─ Definition rendering
-├─ /docs/diagram/{id}                  ├─ /docs
+├─ /console/{id}                       ├─ /v1/docs
 │  └─ Interactive HTML UI              │  └─ Swagger UI (sg_api)
 ├─ HTTP Storage Client                 ├─ SQLite Storage
 │  └─ ALL data via sg_api              │  └─ Direct database access
@@ -391,14 +391,14 @@ sg_web (port 3000)                     sg_api (port 8080)
 6. ✅ **Navigation Page:**
    - Root page (/) shows links to all four destinations:
      - sg_api documentation (port 8080)
-     - sg_web API documentation (port 3000 /swagger)
+     - sg_web API documentation (port 3000 /v1/docs)
      - Health endpoints for both services
      - Interactive diagram viewer with instance ID input
 
 7. ✅ **Swagger UI for sg_web:**
    - Dedicated OpenAPI spec: `docs/sg_web_openapi.yaml`
    - Specialized for visualization endpoints only
-   - Accessible at: `http://localhost:3000/swagger`
+   - Accessible at: `http://localhost:3000/v1/docs`
    - Documents all query parameters and formats
 
 8. ✅ **Definition Visualization Proxy:**
@@ -410,7 +410,7 @@ sg_web (port 3000)                     sg_api (port 8080)
 **Changes Made:**
 
 - `cmd/sg_web/main.go` - Removed --db and --asset-dir flags, proxy mode only
-- `internal/web/server.go` - Removed assetDir parameter, added /swagger route
+- `internal/web/server.go` - Removed assetDir parameter, added /v1/docs route
 - `internal/web/handlers.go` - Added Swagger UI handler, updated navigation page
 - `internal/web/http_storage.go` - HTTP storage client (proxy to sg_api)
 - `internal/visualize/handlers.go` - Removed assetDir, proxies definition requests
@@ -425,9 +425,9 @@ sg_web (port 3000)                     sg_api (port 8080)
 
 # Access points:
 # - Navigation: http://localhost:3000/
-# - sg_web Swagger: http://localhost:3000/swagger
-# - sg_api Swagger: http://localhost:8080/docs
-# - Diagram viewer: http://localhost:3000/docs/diagram/{instanceID}
+# - sg_web Swagger: http://localhost:3000/v1/docs
+# - sg_api Swagger: http://localhost:8080/v1/docs
+# - Diagram viewer: http://localhost:3000/console/{instanceID}
 ```
 
 **Testing Status:**
@@ -435,7 +435,7 @@ sg_web (port 3000)                     sg_api (port 8080)
 - ✅ sg_web runs in proxy-only mode (NO standalone)
 - ✅ sg_web serves all 5 visualization features
 - ✅ JavaScript correctly calls sg_api for data
-- ✅ Swagger UI accessible at /swagger
+- ✅ Swagger UI accessible at /v1/docs
 - ✅ Navigation page links to all services
 - ✅ Definition visualization proxied to sg_api
 - ✅ Health endpoints operational for both services
