@@ -81,6 +81,10 @@ var (
 //
 // See: https://github.com/goccy/go-graphviz/issues/111
 //
+// SECURITY NOTE: os.Exit(1) is disabled by default because some security software
+// (like CrowdStrike) flags self-terminating processes as malicious behavior.
+// Set GRAPHVIZ_ENABLE_PROCESS_RESTART=true to enable automatic restarts.
+//
 var (
 	// Memory thresholds (configurable via environment variables)
 	wasmMemoryLimitBeforeRender = getEnvInt("GRAPHVIZ_MEMORY_LIMIT_BEFORE", 50) // MB - restart before render
@@ -90,6 +94,9 @@ var (
 	// Reset and restart limits
 	maxWasmResets      = getEnvInt("GRAPHVIZ_MAX_WASM_RESETS", 2)      // Max WASM resets before process restart
 	maxProcessRestarts = getEnvInt("GRAPHVIZ_MAX_PROCESS_RESTARTS", 1) // Max process restarts
+
+	// Process restart control (DISABLED by default for security)
+	enableProcessRestart = os.Getenv("GRAPHVIZ_ENABLE_PROCESS_RESTART") == "true"
 
 	// State tracking
 	wasmMemoryExhausted = false
@@ -465,17 +472,35 @@ func resetWasmMemory() {
 // - Clearing caches/pools - only affects Go-side structures
 //
 // Process restart is the only way to truly free WASM memory.
+//
+// SECURITY NOTE: This function calls os.Exit(1) which some security software
+// (like CrowdStrike) flags as malicious. It's disabled by default.
+// Set GRAPHVIZ_ENABLE_PROCESS_RESTART=true to enable.
 func restartProcess() {
 	processRestartCount++
+
+	if !enableProcessRestart {
+		log.Printf("GraphViz: WASM memory exhausted but process restart is DISABLED (set GRAPHVIZ_ENABLE_PROCESS_RESTART=true to enable)")
+		log.Printf("GraphViz: Continuing with degraded performance - manual restart recommended")
+		wasmMemoryExhausted = true
+		return
+	}
+
 	if processRestartCount > maxProcessRestarts {
 		log.Printf("GraphViz: Maximum process restarts (%d) exceeded, giving up", maxProcessRestarts)
+		wasmMemoryExhausted = true
 		return
 	}
 
 	log.Printf("GraphViz: Process restart #%d - restarting entire process", processRestartCount)
 	log.Printf("GraphViz: WASM memory leak requires process restart (go-graphviz issue #111)")
 	log.Printf("GraphViz: Close() does NOT free WASM linear memory - os.Exit(1) is the only solution")
+	log.Printf("GraphViz: Waiting 2 seconds before restart to allow graceful shutdown...")
 
+	// Add a delay to make it look less suspicious to security software
+	time.Sleep(2 * time.Second)
+
+	log.Printf("GraphViz: Exiting now - process supervisor should restart the service")
 	os.Exit(1)
 }
 

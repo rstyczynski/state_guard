@@ -36,11 +36,11 @@ type FSMTransition struct {
 
 // StateTransition represents a state change event (prepared for Phase 2.1 History)
 type StateTransition struct {
-	ID           int64
-	InstanceID   string
-	FromState    string
-	ToState      string
-	TransitionedAt time.Time
+	ID             int64     `json:"id,omitempty"`
+	InstanceID     string    `json:"instance_id,omitempty"`
+	FromState      string    `json:"from_state"`
+	ToState        string    `json:"to_state"`
+	TransitionedAt time.Time `json:"transitioned_at"`
 }
 
 // Storage defines the interface for FSM persistence
