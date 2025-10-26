@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -57,13 +59,15 @@ func (c *CrashTestSuite) runLoadTest(t *testing.T, name string, concurrency int,
 	t.Logf("Starting %s test: %d concurrent clients, %v duration, %d req/s", name, concurrency, duration, requestRate)
 
 	done := make(chan bool, concurrency)
-	errors := make(chan error, concurrency*10)
-	successCount := 0
-	errorCount := 0
+	errors := make(chan error, concurrency*100) // Larger buffer to prevent blocking
+	var successCount, errorCount int32 // Use atomic counters
+	var wg sync.WaitGroup
 
 	// Start concurrent clients
 	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
 		go func(clientID int) {
+			defer wg.Done()
 			defer func() { done <- true }()
 
 			// Calculate request interval based on rate
@@ -78,13 +82,19 @@ func (c *CrashTestSuite) runLoadTest(t *testing.T, name string, concurrency int,
 					// Make a request
 					req, err := http.NewRequest("GET", c.baseURL+"/api/v1/health", nil)
 					if err != nil {
-						errors <- fmt.Errorf("client %d: failed to create request: %v", clientID, err)
+						select {
+						case errors <- fmt.Errorf("client %d: failed to create request: %v", clientID, err):
+						default: // Don't block if channel is full
+						}
 						continue
 					}
 
 					resp, err := c.client.Do(req)
 					if err != nil {
-						errors <- fmt.Errorf("client %d: request failed: %v", clientID, err)
+						select {
+						case errors <- fmt.Errorf("client %d: request failed: %v", clientID, err):
+						default: // Don't block if channel is full
+						}
 						continue
 					}
 
@@ -92,9 +102,13 @@ func (c *CrashTestSuite) runLoadTest(t *testing.T, name string, concurrency int,
 					resp.Body.Close()
 
 					if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-						successCount++
+						atomic.AddInt32(&successCount, 1)
 					} else {
-						errors <- fmt.Errorf("client %d: unexpected status %d: %s", clientID, resp.StatusCode, string(body))
+						atomic.AddInt32(&errorCount, 1)
+						select {
+						case errors <- fmt.Errorf("client %d: unexpected status %d: %s", clientID, resp.StatusCode, string(body)):
+						default: // Don't block if channel is full
+						}
 					}
 				}
 			}
@@ -118,21 +132,32 @@ func (c *CrashTestSuite) runLoadTest(t *testing.T, name string, concurrency int,
 	}
 
 collectErrors:
-	// Collect any remaining errors
+	// Wait for all goroutines to finish before closing channel
+	wg.Wait()
 	close(errors)
+
+	// Collect any remaining errors
+	var errCount int32
 	for err := range errors {
 		if err != nil {
-			errorCount++
-			t.Logf("Error: %v", err)
+			errCount++
+			if errCount <= 10 { // Only log first 10 errors to avoid spam
+				t.Logf("Error: %v", err)
+			}
 		}
 	}
 
-	t.Logf("Load test completed: %d successful, %d errors", successCount, errorCount)
+	finalSuccessCount := atomic.LoadInt32(&successCount)
+	finalErrorCount := atomic.LoadInt32(&errorCount)
+	t.Logf("Load test completed: %d successful, %d errors", finalSuccessCount, finalErrorCount)
 
 	// Check if error rate is too high
-	errorRate := float64(errorCount) / float64(successCount+errorCount) * 100
-	if errorRate > 10 { // More than 10% error rate
-		t.Errorf("High error rate: %.2f%% (%d errors out of %d total requests)", errorRate, errorCount, successCount+errorCount)
+	totalRequests := finalSuccessCount + finalErrorCount
+	if totalRequests > 0 {
+		errorRate := float64(finalErrorCount) / float64(totalRequests) * 100
+		if errorRate > 10 { // More than 10% error rate
+			t.Errorf("High error rate: %.2f%% (%d errors out of %d total requests)", errorRate, finalErrorCount, totalRequests)
+		}
 	}
 }
 
@@ -449,13 +474,15 @@ func (c *CrashTestSuite) runResourceExhaustionTest(t *testing.T, name string, co
 	t.Logf("Starting %s: %d concurrent clients, %v duration", name, concurrency, duration)
 
 	done := make(chan bool, concurrency)
-	errors := make(chan error, concurrency*10)
-	successCount := 0
-	errorCount := 0
+	errors := make(chan error, concurrency*100) // Larger buffer to prevent blocking
+	var successCount, errorCount int32 // Use atomic counters
+	var wg sync.WaitGroup
 
 	// Start concurrent clients
 	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
 		go func(clientID int) {
+			defer wg.Done()
 			defer func() { done <- true }()
 
 			startTime := time.Now()
@@ -467,7 +494,10 @@ func (c *CrashTestSuite) runResourceExhaustionTest(t *testing.T, name string, co
 
 				req, err := http.NewRequest(method, c.baseURL+endpoint, body)
 				if err != nil {
-					errors <- fmt.Errorf("client %d: failed to create request: %v", clientID, err)
+					select {
+					case errors <- fmt.Errorf("client %d: failed to create request: %v", clientID, err):
+					default: // Don't block if channel is full
+					}
 					continue
 				}
 
@@ -477,7 +507,10 @@ func (c *CrashTestSuite) runResourceExhaustionTest(t *testing.T, name string, co
 
 				resp, err := c.client.Do(req)
 				if err != nil {
-					errors <- fmt.Errorf("client %d: request failed: %v", clientID, err)
+					select {
+					case errors <- fmt.Errorf("client %d: request failed: %v", clientID, err):
+					default: // Don't block if channel is full
+					}
 					continue
 				}
 
@@ -485,10 +518,13 @@ func (c *CrashTestSuite) runResourceExhaustionTest(t *testing.T, name string, co
 				resp.Body.Close()
 
 				if resp.StatusCode >= 200 && resp.StatusCode < 500 {
-					successCount++
+					atomic.AddInt32(&successCount, 1)
 				} else {
-					errors <- fmt.Errorf("client %d: unexpected status %d: %s", clientID, resp.StatusCode, string(responseBody))
-					errorCount++
+					atomic.AddInt32(&errorCount, 1)
+					select {
+					case errors <- fmt.Errorf("client %d: unexpected status %d: %s", clientID, resp.StatusCode, string(responseBody)):
+					default: // Don't block if channel is full
+					}
 				}
 
 				// Small delay to prevent overwhelming the server
@@ -514,20 +550,32 @@ func (c *CrashTestSuite) runResourceExhaustionTest(t *testing.T, name string, co
 	}
 
 collectErrors:
-	// Collect any remaining errors
+	// Wait for all goroutines to finish before closing channel
+	wg.Wait()
 	close(errors)
+
+	// Collect any remaining errors
+	var errCount int32
 	for err := range errors {
 		if err != nil {
-			t.Logf("Error: %v", err)
+			errCount++
+			if errCount <= 10 { // Only log first 10 errors to avoid spam
+				t.Logf("Error: %v", err)
+			}
 		}
 	}
 
-	t.Logf("Resource exhaustion test completed: %d successful, %d errors", successCount, errorCount)
+	finalSuccessCount := atomic.LoadInt32(&successCount)
+	finalErrorCount := atomic.LoadInt32(&errorCount)
+	t.Logf("Resource exhaustion test completed: %d successful, %d errors", finalSuccessCount, finalErrorCount)
 
 	// Check if error rate is too high
-	errorRate := float64(errorCount) / float64(successCount+errorCount) * 100
-	if errorRate > 50 { // More than 50% error rate
-		t.Errorf("High error rate: %.2f%% (%d errors out of %d total requests)", errorRate, errorCount, successCount+errorCount)
+	totalRequests := finalSuccessCount + finalErrorCount
+	if totalRequests > 0 {
+		errorRate := float64(finalErrorCount) / float64(totalRequests) * 100
+		if errorRate > 50 { // More than 50% error rate
+			t.Errorf("High error rate: %.2f%% (%d errors out of %d total requests)", errorRate, finalErrorCount, totalRequests)
+		}
 	}
 }
 
